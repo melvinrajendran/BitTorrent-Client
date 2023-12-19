@@ -1014,3 +1014,57 @@ func findMissingPieces() {
 		}
 	}
 }
+
+func getRandomPieceIndex(pieceIndices []int) (int32) {
+	if len(pieceIndices) == 0 {
+		return -1
+	}
+
+	index := rand.Intn(len(pieceIndices))
+
+	return int32(pieceIndices[index])
+}
+
+func getRandomSubsetOfPieceIndices(pieceIndices []int, subsetSize int) ([]int) {
+	if len(pieceIndices) < subsetSize { // Return entire list of indices if there are less than subsetSize 
+		return pieceIndices
+	}
+
+	// Shuffle the indices slice
+	shuffledSlice := make([]int, len(pieceIndices))
+	copy(shuffledSlice, pieceIndices)
+
+	for i := len(shuffledSlice) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		shuffledSlice[i], shuffledSlice[j] = shuffledSlice[j], shuffledSlice[i]
+	}
+
+	// Return the first 'subsetSize' elements as the random subset
+	return shuffledSlice[:subsetSize]
+}
+
+func getRandomBlockIndices(pieceIdx int, numIndices int) []int {
+
+	var indices []int // contains only indices of blocks that have not yet been received
+	for i := 0; i < pieces[pieceIdx].numBlocks; i++ {
+		if !pieces[pieceIdx].blocks[i].isReceived {
+			indices = append(indices, i)
+		}
+	}
+
+	if len(indices) < numIndices { // Return entire list of indices if there are less than subsetSize 
+		return indices
+	}
+
+	// Shuffle the indices slice
+	shuffledSlice := make([]int, len(indices))
+	copy(shuffledSlice, indices)
+
+	for i := len(shuffledSlice) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		shuffledSlice[i], shuffledSlice[j] = shuffledSlice[j], shuffledSlice[i]
+	}
+
+	// Return the shuffled slice
+	return shuffledSlice[:numIndices]
+}

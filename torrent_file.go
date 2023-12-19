@@ -83,18 +83,18 @@ func newPiece(length int64) Piece {
 func printPiece(piece Piece) {
 	fmt.Println("\tBlocks:")
 	for i, block := range piece.blocks {
-		fmt.Printf("\t\tIndex: %d\tIs Received: %t\tLength: %d\n", i, block.isReceived, block.length)
+		fmt.Printf("\t\tBlock %v:\tIs Received: %v\tLength: %v\n", i, block.isReceived, block.length)
 	}
-	fmt.Printf("\tIs Complete: %t\n", piece.isComplete)
-	fmt.Printf("\tNumber of Blocks: %d\n", piece.numBlocks)
-	fmt.Printf("\tNumber of Blocks Received: %d\n", piece.numBlocksReceived)
+	fmt.Printf("\tIs Complete: %v\n", piece.isComplete)
+	fmt.Printf("\tNumber of Blocks: %v\n", piece.numBlocks)
+	fmt.Printf("\tNumber of Blocks Received: %v\n", piece.numBlocksReceived)
 }
 
 // Prints the fields of all pieces.
 func printPieces() {
 	fmt.Println("========================== Pieces ==========================")
 	for i, piece := range pieces {
-		fmt.Printf("Piece %d:\n", i)
+		fmt.Printf("Piece %v:\n", i)
 		printPiece(piece)
 	}
 }
@@ -153,6 +153,7 @@ func parseTorrentFile(torrentFile *os.File) {
 	}
 
 	if verbose {
+		// Print the torrent file and pieces
 		printTorrentFile(decodedTorrentFile)
 		printPieces()
 	}
@@ -166,10 +167,10 @@ func printTorrentFile(torrentFile map[string]interface{}) {
 			fmt.Println("Info Dictionary:")
 			info := torrentFile["info"].(map[string]interface{})
 			for key, value := range info {
-				fmt.Printf("\tKey: %s, Value: %#v\n", key, value)
+				fmt.Printf("\tKey: %v, Value: %v\n", key, value)
 			}
 		} else {
-			fmt.Printf("Key: %s, Value: %#v\n", key, value)
+			fmt.Printf("Key: %v, Value: %v\n", key, value)
 		}
 	}
 }

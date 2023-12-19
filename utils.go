@@ -1,14 +1,26 @@
 /*
- * Utility functions that are used in the BitTorrent protocols.
+ * Utility functions that are used in the BitTorrent protocol.
  */
 
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
+	"flag"
 	"fmt"
-	"math/rand"
+	"net"
+	"os"
 )
+
+// Indicates that the client accepts a compact tracker response
+var	compact bool
+// Port number that the client is listening on
+var	port int64
+// Torrent file that contains metadata about the file to be distributed
+var	torrentFile *os.File
+// Indicates that the client prints detailed logs
+var	verbose bool
 
 // Checks if the parameter condition is false, in which case an error message is printed before panicking.
 func assert(condition bool, message string) {
@@ -47,56 +59,49 @@ func getSHA1Hash(bytes []byte) []byte {
 	return sha1.Sum(nil)
 }
 
-func getRandomPieceIndex(pieceIndices []int) (int32) {
-	if len(pieceIndices) == 0 {
-		return -1
-	}
+// Parses and validates the command-line flags.
+func parseFlags() {
+	
+	// Define the command-line flags
+	var tfp string
+	var p int
+	flag.BoolVar(&compact, "compact", false, "Indicates that the client accepts a compact response")
+	flag.IntVar(&p, "port", 6881, "Port that the client will bind to and listen on")
+	flag.StringVar(&tfp, "torrent", "artofwar.torrent", "Path to the torrent file that contains metadata about the file to be distributed")
+	flag.BoolVar(&verbose, "verbose", false, "Indicates that the client prints detailed logs")
 
-	index := rand.Intn(len(pieceIndices))
+	// Parse the flags
+	flag.Parse()
 
-	return int32(pieceIndices[index])
+	// Validate the port flag
+	port = int64(p)
+	assert(6881 <= port && port <= 6889, "Invalid port, must be an integer between 6881 and 6889")
+
+	// Validate the torrent file path flag by attempting to open the torrent file
+	tf, err := os.Open(tfp)
+	assert(err == nil, "Invalid torrent file path")
+	torrentFile = tf
 }
 
-func getRandomSubsetOfPieceIndices(pieceIndices []int, subsetSize int) ([]int) {
-	if len(pieceIndices) < subsetSize { // Return entire list of indices if there are less than subsetSize 
-		return pieceIndices
-	}
+// Iteratively reads from the parameter connection and returns a buffer containing the read bytes.
+func readLoop(conn net.Conn) *bytes.Buffer {
 
-	// Shuffle the indices slice
-	shuffledSlice := make([]int, len(pieceIndices))
-	copy(shuffledSlice, pieceIndices)
+	// Initialize a buffer and temporary buffer
+	buffer := new(bytes.Buffer)
+	temp := make([]byte, 1024)
 
-	for i := len(shuffledSlice) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
-		shuffledSlice[i], shuffledSlice[j] = shuffledSlice[j], shuffledSlice[i]
-	}
+	// Loop while there are bytes to be read
+	for {
 
-	// Return the first 'subsetSize' elements as the random subset
-	return shuffledSlice[:subsetSize]
-}
-
-func getRandomBlockIndices(pieceIdx int, numIndices int) []int {
-
-	var indices []int // contains only indices of blocks that have not yet been received
-	for i := 0; i < pieces[pieceIdx].numBlocks; i++ {
-		if !pieces[pieceIdx].blocks[i].isReceived {
-			indices = append(indices, i)
+		// Read bytes from the connection into the temporary buffer
+		n, err := conn.Read(temp)
+		if err != nil {
+			break
 		}
+
+		// Append the read bytes to the buffer
+		buffer.Write(temp[:n])
 	}
 
-	if len(indices) < numIndices { // Return entire list of indices if there are less than subsetSize 
-		return indices
-	}
-
-	// Shuffle the indices slice
-	shuffledSlice := make([]int, len(indices))
-	copy(shuffledSlice, indices)
-
-	for i := len(shuffledSlice) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
-		shuffledSlice[i], shuffledSlice[j] = shuffledSlice[j], shuffledSlice[i]
-	}
-
-	// Return the shuffled slice
-	return shuffledSlice[:numIndices]
+	return buffer
 }

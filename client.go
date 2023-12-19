@@ -8,6 +8,10 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 )
 
 // Peer ID of the client
@@ -20,7 +24,7 @@ func main() {
 	defer torrentFile.Close()
 
 	// Generate the peer ID of the client
-	peerID = generatePeerID()
+	generatePeerID()
 
 	// Print the client's details
 	printClientDetails()
@@ -28,13 +32,13 @@ func main() {
 	// Parse the torrent file
 	parseTorrentFile(torrentFile)
 
-	// // Declare and add a single goroutine to a wait group
-	// var wg sync.WaitGroup
-	// wg.Add(1)
+	// Declare and add a single goroutine to a wait group
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-	// // Start goroutines to send and receive tracker requests, respectively
-	// go handleTrackerRequests()
-	// go handleTrackerResponses()
+	// Start goroutines to send tracker requests and receive tracker responses, respectively
+	go handleTrackerRequests()
+	go handleTrackerResponses()
 
 	// // Start goroutines to actively form new connections and handle incoming connections, respectively
 	// go handleFormingConnections()
@@ -52,30 +56,49 @@ func main() {
 	// go handleTimeouts()
 
 	// go handleEndGame()
-	// // Start a goroutine to handle shutting down gracefully
-	// go handleShuttingDown(&wg)
+
+	// Start a goroutine to shut down gracefully
+	go handleShuttingDown(&wg)
 	
-	// // Wait for the shutdown goroutine to finish
-	// wg.Wait()
+	// Wait for the shutdown goroutine to finish
+	wg.Wait()
 }
 
 // Generates and returns a peer ID for the client.
-func generatePeerID() string {
+func generatePeerID() {
 
 	// Generate a random 12-digit integer
 	randomInt := rand.Intn(1000000000000)
 
-	// Format the random integer as a string
-	randomStr := fmt.Sprintf("%012d", randomInt)
+	// Compute the peer ID of the client by concatenating the client ID and version and the random integer
+	pid := "-ML0001-" + fmt.Sprintf("%012d", randomInt)
 
-	// Compute the peer ID of the client by concatenating the client ID and client version to the random string
-	peerID := "-ML0001-" + randomStr
-
-	return peerID
+	// Initialize the peer ID of the client
+	peerID = pid
 }
 
 // Prints the client's command-line flags and peer ID.
 func printClientDetails() {
 	fmt.Println("====================== Client Details ======================")
-	fmt.Printf("Compact: %v\nPeer ID: %s\nPort: %d\nVerbose: %v\n", compact, peerID, port, verbose)
+	fmt.Printf("Compact: %v\nPeer ID: %v\nPort: %v\nVerbose: %v\n", compact, peerID, port, verbose)
+	if !verbose {
+		fmt.Println("===================== Transfer Details =====================")
+	}
+}
+
+// Handles gracefully shutting down the client.
+func handleShuttingDown(wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// Create a channel via which to receive OS signals
+	sigChannel := make(chan os.Signal, 1)
+
+	// Notify the channel on receiving the interrupt signal (Ctrl + C)
+	signal.Notify(sigChannel, os.Interrupt, syscall.SIGINT)
+
+	// Block until a signal is received
+	<-sigChannel
+
+	// Send a tracker request containing the event 'stopped'
+	sendTrackerRequest("stopped")
 }
