@@ -21,13 +21,6 @@ import (
 	"github.com/marksamman/bencode"
 )
 
-// Announce URL of the tracker
-var announce string
-
-// 20-byte SHA1 hash of the encoded info dictionary
-var infoHash []byte
-// Peer ID of the client
-var peerID string
 // Number of bytes that the client has uploaded, has downloaded, and has to download, respectively
 var (
 	uploaded   int64 = 0
@@ -45,7 +38,7 @@ var connChannel = make(chan net.Conn)
 type QueryParams struct {
 	infoHash   []byte
 	peerID     string
-	port       int
+	port       int64
 	uploaded   int64
 	downloaded int64
 	left       int64
@@ -62,7 +55,7 @@ func (queryParams *QueryParams) toQueryString() string {
 	// Add all query parameters to the URL values
 	values.Add("info_hash", string(queryParams.infoHash))
 	values.Add("peer_id", queryParams.peerID)
-	values.Add("port", strconv.Itoa(queryParams.port))
+	values.Add("port", strconv.FormatInt(queryParams.port, 10))
 	values.Add("uploaded", strconv.FormatInt(queryParams.uploaded, 10))
 	values.Add("downloaded", strconv.FormatInt(queryParams.downloaded, 10))
 	values.Add("left", strconv.FormatInt(queryParams.left, 10))
@@ -347,6 +340,9 @@ func handleTrackerRequests() {
 		// Send a tracker scrape
 		sendTrackerScrape()
 	}
+
+	// Initialize the number of bytes that the client has to downloaded
+	left = fileLength
 
 	// Send a tracker request containing the event 'started'
 	sendTrackerRequest("started")

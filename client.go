@@ -1,66 +1,81 @@
 /*
- * BitTorrent client.
+ * BitTorrent client, implemented according to the v1.0 protocol specification:
+ * https://wiki.theory.org/BitTorrentSpecification.
  */
 
 package main
 
 import (
 	"fmt"
-	"sync"
+	"math/rand"
 )
 
-// Port number that the client is listening on
-var port int
-// Indicates that the client accepts a compact tracker response
-var compact bool
-// Indicates that the client prints detailed logs
-var verbose bool
+// Peer ID of the client
+var peerID string
 
 func main() {
 
 	// Parse and validate the command-line flags
 	parseFlags()
+	defer torrentFile.Close()
 
-	// Print the pieces
-	if verbose {
-		printPieces()
-	}
+	// Generate the peer ID of the client
+	peerID = generatePeerID()
 
-	// Declare and add a single goroutine to a wait group
-	var wg sync.WaitGroup
-	wg.Add(1)
+	// Print the client's details
+	printClientDetails()
 
-	// Start goroutines to send and receive tracker requests, respectively
-	go handleTrackerRequests()
-	go handleTrackerResponses()
+	// Parse the torrent file
+	parseTorrentFile(torrentFile)
 
-	// Start goroutines to actively form new connections and handle incoming connections, respectively
-	go handleFormingConnections()
-	go handleIncomingConnections()
+	// // Declare and add a single goroutine to a wait group
+	// var wg sync.WaitGroup
+	// wg.Add(1)
 
-	// Start goroutine to periodically send unchoke messages and perform optimistic unchoking, respectively
-	go handleUnchokeMessages()
-	go handleOptimisticUnchoking()
+	// // Start goroutines to send and receive tracker requests, respectively
+	// go handleTrackerRequests()
+	// go handleTrackerResponses()
 
-	// Start a goroutine to process incoming request messages
-	go handleRequestMessages()
+	// // Start goroutines to actively form new connections and handle incoming connections, respectively
+	// go handleFormingConnections()
+	// go handleIncomingConnections()
 
-	// Start goroutine to periodically send keep-alive messages and close timed-out connections, respectively
-	go handleKeepAliveMessages()
-	go handleTimeouts()
+	// // Start goroutine to periodically send unchoke messages and perform optimistic unchoking, respectively
+	// go handleUnchokeMessages()
+	// go handleOptimisticUnchoking()
 
-	go handleEndGame()
-	// Start a goroutine to handle shutting down gracefully
-	go handleShuttingDown(&wg)
+	// // Start a goroutine to process incoming request messages
+	// go handleRequestMessages()
+
+	// // Start goroutine to periodically send keep-alive messages and close timed-out connections, respectively
+	// go handleKeepAliveMessages()
+	// go handleTimeouts()
+
+	// go handleEndGame()
+	// // Start a goroutine to handle shutting down gracefully
+	// go handleShuttingDown(&wg)
 	
-	// Wait for the shutdown goroutine to finish
-	wg.Wait()
+	// // Wait for the shutdown goroutine to finish
+	// wg.Wait()
 }
 
+// Generates and returns a peer ID for the client.
+func generatePeerID() string {
+
+	// Generate a random 12-digit integer
+	randomInt := rand.Intn(1000000000000)
+
+	// Format the random integer as a string
+	randomStr := fmt.Sprintf("%012d", randomInt)
+
+	// Compute the peer ID of the client by concatenating the client ID and client version to the random string
+	peerID := "-ML0001-" + randomStr
+
+	return peerID
+}
+
+// Prints the client's command-line flags and peer ID.
 func printClientDetails() {
 	fmt.Println("====================== Client Details ======================")
-	fmt.Printf("Port: %d\nCompact: %v\nVerbose: %v\nPeer ID: %s\n", port, compact, verbose, peerID)
-	if !verbose {
-		fmt.Println("===================== Transfer Details =====================")
-	}
+	fmt.Printf("Compact: %v\nPeer ID: %s\nPort: %d\nVerbose: %v\n", compact, peerID, port, verbose)
 }

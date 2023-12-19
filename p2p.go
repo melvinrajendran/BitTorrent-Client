@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"math"
 	"math/rand"
 	"net"
 	"os"
@@ -18,24 +17,10 @@ import (
 var downloadComplete = false
 // Track start time of download
 var downloadStartTime time.Time = time.Now()
-// Block size
-const blockSize int64 = 16384
 // Number of requests to send out per connection
 const requestsPerConnection = 10
 // Number of random block requests per piece
 const blockRequestsPerPiece = 5
-// File name
-var fileName string
-// File length
-var fileLength int64
-// Number of pieces
-var numPieces int
-// Number of bytes in each piece
-var pieceLength int64
-// Array of 20-byte piece hash values
-var pieceHashes [][]byte
-// Tracks the indices of pieces
-var pieces []Piece
 // Number of pieces downloaded
 var numPiecesDownloaded = 0
 // Indicates if the client has entered endgame
@@ -74,71 +59,6 @@ func newRequest(connState ConnectionState, msg RequestMessage) Request {
 		begin: msg.Begin,
 		length: msg.Length,
 		connState: connState,
-	}
-}
-
-type Block struct {
-	isReceived bool
-	length     int64
-}
-
-// Returns a new Piece
-func initBlocks(pieceLen int64) []Block {
-	numBlocks := int(math.Ceil(float64(pieceLen) / float64(blockSize)))
-	lastBlockLen := pieceLen - (int64(numBlocks) - 1) * blockSize
-
-	blocks := make([]Block, numBlocks)
-	for i := 0; i < numBlocks; i++ {
-		blockLen := blockSize
-		if i == numBlocks - 1 {
-			blockLen = lastBlockLen
-		}
-
-		blocks[i] = Block{
-			isReceived: false,
-			length: blockLen,
-		}
-	}
-
-	return blocks
-}
-
-type Piece struct {
-	isComplete         bool
-	data               []byte
-	blocks             []Block
-	receivedBlockCount int
-	totalBlockCount    int
-}
-
-// Returns a new Piece
-func newPiece(length int64) Piece {
-
-	return Piece{
-		isComplete: false,
-		data:       make([]byte, length),
-		blocks:     initBlocks(length),
-		receivedBlockCount: 0,
-		totalBlockCount: int(math.Ceil(float64(length) / float64(blockSize))),
-	}
-}
-
-func printPiece(p Piece) {
-	fmt.Printf("\tIs Complete: %t\n", p.isComplete)
-	// fmt.Printf("\tLength: %s\n", p.data)
-	fmt.Println("\tBlocks:")
-	for i, block := range p.blocks {
-		fmt.Printf("\t\tIndex: %d\tLength: %d\tIs Received: %t\n", i, block.length, block.isReceived)
-	}
-	fmt.Printf("\tReceived Block Count: %d\n", p.receivedBlockCount)
-	fmt.Printf("\tTotal Block Count: %d\n", p.totalBlockCount)
-}
-
-func printPieces() {
-	fmt.Println("====================== Piece Statuses ======================")
-	for idx, piece := range pieces {
-		fmt.Printf("Piece %d:\n", idx)
-		printPiece(piece)
 	}
 }
 
@@ -644,8 +564,7 @@ func handleAcceptedConnection(conn net.Conn) {
 				// Decrement the number of bytes left
 				left -= int64(addedByteCount)
 
-				// Update receivedBlockCount
-				pieces[msg.Index].receivedBlockCount += 1
+				pieces[msg.Index].numBlocksReceived += 1
 
 				// Remove the corresponding request for the received piece message from PendingRequests
 				if endGame {
@@ -657,7 +576,7 @@ func handleAcceptedConnection(conn net.Conn) {
 				}
 
 				// Check if piece was completed
-				if pieces[msg.Index].receivedBlockCount == pieces[msg.Index].totalBlockCount {
+				if pieces[msg.Index].numBlocksReceived == pieces[msg.Index].numBlocks {
 
 					// Compare hash of completed piece with piece hash in info dictionary for validation check'
 					correctHash := pieceHashes[msg.Index]

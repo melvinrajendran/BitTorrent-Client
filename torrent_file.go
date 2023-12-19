@@ -1,0 +1,175 @@
+package main
+
+/*
+ * Functions to handle the torrent (metainfo) file, which contains metadata
+ * necessary to perform the tracker protocol.
+ */
+
+import (
+	"fmt"
+	"math"
+	"os"
+
+	"github.com/marksamman/bencode"
+)
+
+// Block size
+const blockSize int64 = 16384
+
+// 20-byte SHA1 hash of the encoded info dictionary
+var infoHash []byte
+// Number of bytes in each piece
+var pieceLength int64
+// Number of pieces in the file
+var numPieces int
+// Array of 20-byte SHA1 piece hash values
+var pieceHashes [][]byte
+// Array of pieces to be aggregated into a file
+var pieces []Piece
+// File name
+var fileName string
+// File length
+var fileLength int64
+// Announce URL of the tracker
+var announce string
+
+// Stores the status and length of a block in a Piece
+type Block struct {
+	isReceived bool
+	length     int64
+}
+
+// Stores the status and data of a piece in the file
+type Piece struct {
+	blocks            []Block
+	data              []byte
+	isComplete        bool
+	numBlocks         int
+	numBlocksReceived int
+}
+
+// Initializes and returns a new Piece.
+func newPiece(length int64) Piece {
+
+	// Compute the number of blocks and the last block's length, which may be irregular
+	numBlocks := int(math.Ceil(float64(length) / float64(blockSize)))
+	lastBlockLen := length - (int64(numBlocks) - 1) * blockSize
+
+	// Initialize the blocks of the new Piece
+	blocks := make([]Block, numBlocks)
+	for i := 0; i < numBlocks; i++ {
+		blockLen := blockSize
+		if i == numBlocks - 1 {
+			blockLen = lastBlockLen
+		}
+
+		blocks[i] = Block {
+			isReceived: false,
+			length:     blockLen,
+		}
+	}
+
+	// Return the new Piece
+	return Piece {
+		isComplete:        false,
+		blocks:            blocks,
+		data:              make([]byte, length),
+		numBlocks:         numBlocks,
+		numBlocksReceived: 0,
+	}
+}
+
+// Prints the fields of the parameter piece.
+func printPiece(piece Piece) {
+	fmt.Println("\tBlocks:")
+	for i, block := range piece.blocks {
+		fmt.Printf("\t\tIndex: %d\tIs Received: %t\tLength: %d\n", i, block.isReceived, block.length)
+	}
+	fmt.Printf("\tIs Complete: %t\n", piece.isComplete)
+	fmt.Printf("\tNumber of Blocks: %d\n", piece.numBlocks)
+	fmt.Printf("\tNumber of Blocks Received: %d\n", piece.numBlocksReceived)
+}
+
+// Prints the fields of all pieces.
+func printPieces() {
+	fmt.Println("========================== Pieces ==========================")
+	for i, piece := range pieces {
+		fmt.Printf("Piece %d:\n", i)
+		printPiece(piece)
+	}
+}
+
+// Parses the parameter torrent file.
+func parseTorrentFile(torrentFile *os.File) {
+
+	// Decode the torrent file
+	decodedTorrentFile, err := bencode.Decode(torrentFile)
+	assert(err == nil, "Error decoding the torrent file")
+
+	// Get the info dictionary
+	info, ok := decodedTorrentFile["info"].(map[string]interface{})
+	assert(ok, "Invalid info dictionary in torrent file")
+
+	// Compute the 20-byte SHA1 hash of the encoded info dictionary
+	infoHash = getSHA1Hash(bencode.Encode(info))
+
+	// Get the file name
+	fileName, ok = info["name"].(string)
+	assert(ok, "Invalid file name in torrent file")
+
+	// Get the length of the file in bytes
+	fileLength, ok = info["length"].(int64)
+	assert(ok, "Invalid length in torrent file")
+
+	// Get the number of bytes in each piece
+	pieceLength, ok = info["piece length"].(int64)
+	assert(ok, "Invalid piece length in torrent file")
+
+	// Compute the number of pieces
+	numPieces = int(math.Ceil(float64(fileLength) / float64(pieceLength)))
+
+	// Get the SHA1 hashes of the pieces as an array of 20-byte hash values
+	piecesStr, ok := info["pieces"].(string)
+	assert(ok, "Invalid pieces in torrent file")
+	for i := 0; i < len(piecesStr); i += 20 {
+		piece := []byte(piecesStr[i : i + 20])
+		pieceHashes = append(pieceHashes, piece)
+	}
+
+	// Get the announce URL of the tracker
+	announce = decodedTorrentFile["announce"].(string)
+
+	// Iterate as many times as the number of pieces
+	for i := 0; i < numPieces; i++ {
+
+		// Compute the length of the current piece, where the last piece may be irregular
+		pieceLen := pieceLength
+		if i == numPieces - 1 {
+			pieceLen = fileLength - (int64(numPieces) - 1) * pieceLength
+		}
+
+		// Add a new piece to the array
+		pieces = append(pieces, newPiece(pieceLen))
+	}
+
+	if verbose {
+		printTorrentFile(decodedTorrentFile)
+		printPieces()
+	}
+}
+
+// Prints the contents of the parameter torrent file.
+func printTorrentFile(torrentFile map[string]interface{}) {
+	fmt.Println("======================= Torrent File =======================")
+	for key, value := range torrentFile {
+		if key == "info" {
+			fmt.Println("Info Dictionary:")
+			info := torrentFile["info"].(map[string]interface{})
+			for key, value := range info {
+				fmt.Printf("\tKey: %s, Value: %#v\n", key, value)
+			}
+		} else {
+			fmt.Printf("Key: %s, Value: %#v\n", key, value)
+		}
+	}
+}
