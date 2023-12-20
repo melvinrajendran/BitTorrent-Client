@@ -252,8 +252,8 @@ func handleAcceptedConnection(conn net.Conn) {
 	assert(err == nil, "Error setting a read deadline")
 
 	// Serialize and send the handshake
-	handshake := NewHandshake(peerID, infoHash)
-	sendMessage(connState, handshake.Serialize(), "handshake", fmt.Sprintf("[%s] Sent handshake", conn.RemoteAddr()))
+	handshake := NewHandshakeMessage(peerID, infoHash)
+	sendMessage(connState, handshake.serialize(), "handshake", fmt.Sprintf("[%s] Sent handshake", conn.RemoteAddr()))
 
 	// Receive and deserialize the peer's handshake
 	handshakeBuffer := make([]byte, 68)
@@ -261,8 +261,8 @@ func handleAcceptedConnection(conn net.Conn) {
 	if err != nil {
 		return
 	}
-	handshake, err = DeserializeHandshake(bytes.NewReader(handshakeBuffer))
-	if err != nil || !bytes.Equal(handshake.InfoHash, infoHash) {
+	handshake, err = deserializeHandshakeMessage(bytes.NewReader(handshakeBuffer))
+	if err != nil || !bytes.Equal(handshake.infoHash, infoHash) {
 		return
 	}
 
@@ -329,10 +329,10 @@ func handleAcceptedConnection(conn net.Conn) {
 					fmt.Printf("[%s] Received keep-alive message\n", conn.RemoteAddr())
 				}
 
-			case SimpleMessage:
+			case ConnectionStateMessage:
 
 				// Switch on the message ID
-				switch msg.MessageID {
+				switch msg.id {
 
 					case MessageIDChoke:
 						if verbose {
@@ -382,7 +382,7 @@ func handleAcceptedConnection(conn net.Conn) {
 						if downloaders != nil && len(downloaders) >= 1 && connState.download_speed > downloaders[len(downloaders) - 1].download_speed {
 
 							// Send a choke message
-							sendMsg := NewSimpleMessage(MessageIDChoke)
+							sendMsg := newConnectionStateMessage(MessageIDChoke)
 							sendMessage(downloaders[len(downloaders) - 1], sendMsg.Serialize(), "choke", fmt.Sprintf("[%s] Sent choke message", downloaders[len(downloaders) - 1].conn.RemoteAddr()))
 						
 							downloaders[len(downloaders) - 1].am_choking = true
@@ -396,7 +396,7 @@ func handleAcceptedConnection(conn net.Conn) {
 						
 					default:
 						if verbose {
-							fmt.Printf("[%s] Received unknown message\n", conn.RemoteAddr())
+							fmt.Printf("[%s] Received invalid message ID\n", conn.RemoteAddr())
 						}
 						return
 				}
@@ -413,7 +413,7 @@ func handleAcceptedConnection(conn net.Conn) {
 					if !connState.am_interested {
 						connState.am_interested = true
 						// Serialize and send Interested message
-						sendMsg := NewSimpleMessage(MessageIDInterested)
+						sendMsg := newConnectionStateMessage(MessageIDInterested)
 						sendMessage(connState, sendMsg.Serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", conn.RemoteAddr()))
 					}
 
@@ -432,7 +432,7 @@ func handleAcceptedConnection(conn net.Conn) {
 					// Resend not interested message if client still does not want any pieces from the peer after the have message
 					connState.am_interested = false
 					// Serialize and send Not Interested message
-					sendMsg := NewSimpleMessage(MessageIDNotInterested)
+					sendMsg := newConnectionStateMessage(MessageIDNotInterested)
 					sendMessage(connState, sendMsg.Serialize(), "not interested", fmt.Sprintf("[%s] Sent not interested message", conn.RemoteAddr()))
 				}
 
@@ -478,10 +478,10 @@ func handleAcceptedConnection(conn net.Conn) {
 
 				if connState.am_interested {
 					// Serialize and send Interested message
-					sendMsg := NewSimpleMessage(MessageIDInterested)
+					sendMsg := newConnectionStateMessage(MessageIDInterested)
 					sendMessage(connState, sendMsg.Serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", conn.RemoteAddr()))
 				} else { // Serialize and send Not Interested message if peer has no pieces the peer is interested in
-					sendMsg := NewSimpleMessage(MessageIDNotInterested)
+					sendMsg := newConnectionStateMessage(MessageIDNotInterested)
 					sendMessage(connState, sendMsg.Serialize(), "not interested", fmt.Sprintf("[%s] Sent not interested message", conn.RemoteAddr()))
 				}
 
@@ -712,7 +712,7 @@ func handleAcceptedConnection(conn net.Conn) {
 
 			default:
 				if verbose {
-					fmt.Printf("[%s] Received unknown message\n", conn.RemoteAddr())
+					fmt.Printf("[%s] Received invalid message ID\n", conn.RemoteAddr())
 				}
 				return
 		}
@@ -881,7 +881,7 @@ func handleUnchokeMessages() {
 				dldrs = append(dldrs, connState)
 
 				// Send a unchoke message
-				sendMsg := NewSimpleMessage(MessageIDUnChoke)
+				sendMsg := newConnectionStateMessage(MessageIDUnChoke)
 				sendMessage(connState, sendMsg.Serialize(), "unchoke", fmt.Sprintf("[%s] Sent unchoke message", connState.conn.RemoteAddr()))
 			
 				connState.am_choking = false
@@ -912,14 +912,14 @@ func handleUnchokeMessages() {
 			if !isDownloader && len(downloaders) >= 1 && connState.am_choking {
 				if (!downloadComplete && connState.download_speed > downloaders[len(downloaders) - 1].download_speed) || (downloadComplete && connState.upload_speed > downloaders[len(downloaders) - 1].upload_speed) {
 					// Send a unchoke message
-					sendMsg := NewSimpleMessage(MessageIDUnChoke)
+					sendMsg := newConnectionStateMessage(MessageIDUnChoke)
 					sendMessage(connState, sendMsg.Serialize(), "unchoke", fmt.Sprintf("[%s] Sent unchoke message", connState.conn.RemoteAddr()))
 					connState.am_choking = false
 				}
 			} else if !isDownloader && !connState.am_choking {
 
 				// Send a choke message
-				sendMsg := NewSimpleMessage(MessageIDChoke)
+				sendMsg := newConnectionStateMessage(MessageIDChoke)
 				sendMessage(connState, sendMsg.Serialize(), "choke", fmt.Sprintf("[%s] Sent choke message", connState.conn.RemoteAddr()))
 				connState.am_choking = true
 			}
@@ -966,7 +966,7 @@ func handleOptimisticUnchoking() {
 		  }
   
 		  // Send a unchoke message
-		  sendMsg := NewSimpleMessage(MessageIDUnChoke)
+		  sendMsg := newConnectionStateMessage(MessageIDUnChoke)
 		  sendMessage(optimisticUnchoked, sendMsg.Serialize(), "unchoke", fmt.Sprintf("[%s] Sent unchoke message", optimisticUnchoked.conn.RemoteAddr()))
 		  optimisticUnchoked.am_choking = false
   
@@ -974,7 +974,7 @@ func handleOptimisticUnchoking() {
 		  time.Sleep(30 * time.Second)
   
 		  // Send a choke message
-		  sendMsg = NewSimpleMessage(MessageIDChoke)
+		  sendMsg = newConnectionStateMessage(MessageIDChoke)
 		  sendMessage(optimisticUnchoked, sendMsg.Serialize(), "choke", fmt.Sprintf("[%s] Sent choke message", optimisticUnchoked.conn.RemoteAddr()))
 		  optimisticUnchoked.am_choking = true
 		}

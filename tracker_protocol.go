@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -19,9 +20,9 @@ import (
 
 // Number of bytes that the client has uploaded, has downloaded, and has to download, respectively
 var (
-	uploaded   int64 = 0
-	downloaded int64 = 0
-	left       int64
+	uploaded   uint64 = 0
+	downloaded uint64 = 0
+	left       uint64
 )
 // Channel via which to send the last TCP connection that was established
 var connChannel = make(chan net.Conn)
@@ -29,7 +30,7 @@ var connChannel = make(chan net.Conn)
 var trackerResponse map[string]interface{}
 
 // Sends a tracker request to the scrape URL, receives the tracker response, and prints it.
-func scrapeTracker() {
+func scrapeTracker() error {
 
 	// Initialize all query parameters
 	params := url.Values {
@@ -39,9 +40,14 @@ func scrapeTracker() {
 	// Get the index of the last slash in the announce URL
 	lastSlashIndex := strings.LastIndex(announce, "/")
 
-	// If (1) there is no slash, or (2) the text immediately following the last slash is not 'announce', return
-	if lastSlashIndex == -1 || len(announce) < lastSlashIndex + 9 || announce[lastSlashIndex + 1:lastSlashIndex + 9] != "announce" {
-		return
+	// If there is no slash, return an error
+	if lastSlashIndex == -1 {
+		return errors.New("Announce URL does not contain a slash")
+	}
+
+	// If the text immediately following the last slash is not 'announce', return an error
+	if len(announce) < lastSlashIndex + 9 || announce[lastSlashIndex + 1:lastSlashIndex + 9] != "announce" {
+		return errors.New("Announce URL does not contain the path '/announce'")
 	}
 
 	// Compute the scrape URL
@@ -74,11 +80,16 @@ func scrapeTracker() {
 	buffer = readLoop(conn)
 
 	// Parse the tracker scrape response
-	scrapeResponse := parseTrackerResponse(buffer, true)
+	scrapeResponse, err := parseTrackerResponse(buffer, true)
+	if err != nil {
+		return err
+	}
 
 	// Get the files dictionary
 	files, ok := scrapeResponse["files"].(map[string]interface{})
-	assert(ok, "Error getting the files dictionary")
+	if !ok {
+		return errors.New("Invalid files dictionary in tracker scrape response")
+	}
 
 	// Get the flags dictionary
 	flags, ok := scrapeResponse["flags"].(map[string]interface{})
@@ -96,6 +107,8 @@ func scrapeTracker() {
 			fmt.Printf("\tKey: %v, Value: %v\n", key, value)
 		}
 	}
+
+	return nil
 }
 
 // Sends a tracker request with the parameter event.
@@ -105,10 +118,10 @@ func sendTrackerRequest(event string) {
 	params := url.Values{}
 	params.Add("info_hash", string(infoHash))
 	params.Add("peer_id", peerID)
-	params.Add("port", strconv.FormatInt(port, 10))
-	params.Add("uploaded", strconv.FormatInt(uploaded, 10))
-	params.Add("downloaded", strconv.FormatInt(downloaded, 10))
-	params.Add("left", strconv.FormatInt(left, 10))
+	params.Add("port", strconv.FormatUint(port, 10))
+	params.Add("uploaded", strconv.FormatUint(uploaded, 10))
+	params.Add("downloaded", strconv.FormatUint(downloaded, 10))
+	params.Add("left", strconv.FormatUint(left, 10))
 	if compact {
 		params.Add("compact", "1")
 	} else {
@@ -146,30 +159,37 @@ func sendTrackerRequest(event string) {
 }
 
 // Receives a tracker response and returns the corresponding decoded dictionary.
-func receiveTrackerResponse(conn net.Conn) {
+func receiveTrackerResponse(conn net.Conn) error {
 	defer conn.Close()
 	
 	// Read the tracker response from the connection
 	buffer := readLoop(conn)
 
 	// Parse the tracker response and update the last tracker response received
-	trackerResponse = parseTrackerResponse(buffer, false)
+	trackerResponse, err := parseTrackerResponse(buffer, false)
+	if err != nil {
+		return err
+	}
 
 	if verbose {
 		// Print the tracker response
 		printTrackerResponse(trackerResponse)
 	}
+
+	return err
 }
 
 // Parses the parameter buffer containing an HTTP tracker response and returns the decoded dictionary.
-func parseTrackerResponse(buffer *bytes.Buffer, isScrape bool) map[string]interface{} {
+func parseTrackerResponse(buffer *bytes.Buffer, isScrape bool) (map[string]interface{}, error) {
 
 	// Get the header and body of the tracker response
 	header := buffer.Bytes()[:(bytes.Index(buffer.Bytes(), []byte("\r\n\r\n")))]
 	body := buffer.Bytes()[(bytes.Index(buffer.Bytes(), []byte("\r\n\r\n")) + 4):]
 
 	// Assert that the HTTP request succeeded
-	assert(strings.Split(strings.Split(string(header), "\r\n")[0], " ")[2] == "OK", "Unsuccessful tracker request")
+	if !(strings.Split(strings.Split(string(header), "\r\n")[0], " ")[2] == "OK") {
+		return nil, errors.New("Unsuccessful tracker request")
+	}
 
 	// Check if the response's transfer encoding is chunked
 	if bytes.Contains(header, []byte("Transfer-Encoding: chunked")) {
@@ -182,7 +202,9 @@ func parseTrackerResponse(buffer *bytes.Buffer, isScrape bool) map[string]interf
 
 			// Compute the length of the current chunk in bytes
 			len, err := strconv.ParseInt(string(body[:(bytes.Index(body, []byte("\r\n")))]), 16, 64)
-			assert(err == nil, "Error converting the chunk length to an integer")
+			if err != nil {
+				return nil, errors.New("Error converting the chunk length to an integer")
+			}
 
 			// If the length is not positive, all chunks have been processed
 			if len <= 0 {
@@ -206,7 +228,9 @@ func parseTrackerResponse(buffer *bytes.Buffer, isScrape bool) map[string]interf
 
 	// Decode the tracker response
 	dict, err := bencode.Decode(buffer)
-	assert(err == nil, "Error decoding the tracker response")
+	if err != nil {
+		return nil, errors.New("Error decoding the tracker response")
+	}
 
 	// Check if the tracker request is not a scrape and the tracker response is compact
 	if !isScrape && compact {
@@ -226,7 +250,7 @@ func parseTrackerResponse(buffer *bytes.Buffer, isScrape bool) map[string]interf
 			peersList = append(peersList, map[string]interface{}{
 				"peer id": "",
 				"ip":      net.IP(address).String(),
-				"port":    int(binary.BigEndian.Uint16([]byte(port))),
+				"port":    binary.BigEndian.Uint64([]byte(port)),
 			})
 		}
 
@@ -234,7 +258,7 @@ func parseTrackerResponse(buffer *bytes.Buffer, isScrape bool) map[string]interf
 		dict["peers"] = peersList
 	}
 
-	return dict
+	return dict, nil
 }
 
 // Prints the parameter tracker response.
@@ -286,7 +310,7 @@ func handleTrackerRequests() {
 	for {
 
 		// Sleep for the interval specified in the last tracker response
-		time.Sleep(time.Duration(trackerResponse["interval"].(int64)) * time.Second)
+		time.Sleep(time.Duration(trackerResponse["interval"].(uint64)) * time.Second)
 
 		// Send a periodic tracker request
 		sendTrackerRequest("")

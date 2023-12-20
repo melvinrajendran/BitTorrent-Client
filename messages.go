@@ -10,397 +10,339 @@ import (
 	"time"
 )
 
+// Length and name of the BitTorrent protocol
 const (
-	MessageIDChoke         byte = 0
-	MessageIDUnChoke       byte = 1
-	MessageIDInterested    byte = 2
-	MessageIDNotInterested byte = 3
-	MessageIDHave          byte = 4
-	MessageIDBitfield      byte = 5
-	MessageIDRequest       byte = 6
-	MessageIDPiece         byte = 7
-	MessageIDCancel        byte = 8
-	MessageIDPort          byte = 9
-
-	Pstr    string = "BitTorrent protocol"
-	Pstrlen byte   = 19
+	pStrLen byte   = 19
+	pStr    string = "BitTorrent protocol"
 )
 
-type Handshake struct {
-	PstrlenVal byte
-	PstrVal    string
-	Reserved   []byte
-	InfoHash   []byte
-	PeerID     string
+// Message IDs
+const (
+	messageIDChoke         byte = 0
+	messageIDUnchoke       byte = 1
+	messageIDInterested    byte = 2
+	messageIDNotInterested byte = 3
+	messageIDHave          byte = 4
+	messageIDBitfield      byte = 5
+	messageIDRequest       byte = 6
+	messageIDPiece         byte = 7
+	messageIDCancel        byte = 8
+)
+
+type HandshakeMessage struct {
+	pStrLen  byte
+	pStr     string
+	reserved []byte
+	infoHash []byte
+	peerID   string
 }
 
-func (msg *Handshake) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.PstrlenVal)
-	buf.WriteString(msg.PstrVal)
-	buf.Write(msg.Reserved)
-	buf.Write(msg.InfoHash)
-	buf.WriteString(msg.PeerID)
+func (message *HandshakeMessage) serialize() []byte {
+	buffer := new(bytes.Buffer)
+	binary.Write(buffer, binary.BigEndian, message.pStrLen)
+	buffer.WriteString(message.pStr)
+	buffer.Write(message.reserved)
+	buffer.Write(message.infoHash)
+	buffer.WriteString(message.peerID)
 
-	return buf.Bytes()
+	return buffer.Bytes()
 }
 
-func DeserializeHandshake(r io.Reader) (Handshake, error) {
-	var msg Handshake
-	binary.Read(r, binary.BigEndian, &msg.PstrlenVal)
-
-	// pstr is a slice with length PstrlenVal
-	pstr := make([]byte, msg.PstrlenVal)
-
-	// reads exactly len(pstr) number of bytes from the io.Reader and stores them in r
-	io.ReadFull(r, pstr)
-	msg.PstrVal = string(pstr) // convert the read pstr bytes to a string
-
-	msg.Reserved = make([]byte, 8)
-	io.ReadFull(r, msg.Reserved)
-
-	msg.InfoHash = make([]byte, 20)
-	if _, err := io.ReadFull(r, msg.InfoHash); err != nil {
-		return Handshake{}, err
-	}
-
-	peerID := make([]byte, 20)
-	if _, err := io.ReadFull(r, peerID); err != nil {
-		return Handshake{}, err
-	}
-	msg.PeerID = string(peerID)
-
-	return msg, nil
-}
-
-func NewHandshake(peerID string, infoHash []byte) Handshake {
-	return Handshake{
-		PstrVal:    Pstr,
-		PstrlenVal: Pstrlen,
-		Reserved:   make([]byte, 8),
-		InfoHash:   infoHash,
-		PeerID:     peerID,
-	}
-}
-
-// ------------------------------
-type KeepAliveMessage struct {
-	LengthPrefix int32
-}
-
-func (msg *KeepAliveMessage) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.LengthPrefix)
-
-	return buf.Bytes()
-}
-
-func NewKeepAliveMessage() KeepAliveMessage {
-	return KeepAliveMessage{
-		LengthPrefix: 0,
-	}
-}
-
-// ------------------------------
-
-// Choke, Unchoke, Interested, and NotInterested messages all have the
-// same form of: <length prefix><message ID>.
-// Simple message accounts for all 4.
-type SimpleMessage struct {
-	LengthPrefix uint32
-	MessageID    byte
-}
-
-func (msg *SimpleMessage) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.LengthPrefix)
-	binary.Write(buf, binary.BigEndian, msg.MessageID)
-
-	return buf.Bytes()
-}
-
-func NewSimpleMessage(messageID byte) SimpleMessage {
-	return SimpleMessage{
-		LengthPrefix: 1,
-		MessageID:    messageID,
-	}
-}
-
-// ------------------------------
-type HaveMessage struct {
-	LengthPrefix int32
-	MessageID    byte // 4 for Have message
-	PieceIndex   int32
-}
-
-func (msg *HaveMessage) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.LengthPrefix)
-	binary.Write(buf, binary.BigEndian, msg.MessageID)
-	binary.Write(buf, binary.BigEndian, msg.PieceIndex)
-
-	return buf.Bytes()
-}
-
-func DeserializeHaveMessage(r io.Reader) (HaveMessage, error) {
-	var msg HaveMessage
-	if err := binary.Read(r, binary.BigEndian, &msg.PieceIndex); err != nil {
-		return HaveMessage{}, err
-	}
-	msg.LengthPrefix = 5
-	msg.MessageID = MessageIDHave
-	return msg, nil
-}
-
-func NewHaveMessage(pieceIndex int32) HaveMessage {
-	return HaveMessage{
-		LengthPrefix: 5,
-		MessageID:    MessageIDHave,
-		PieceIndex:   pieceIndex,
-	}
-}
-
-//------------------------------
-
-type BitfieldMessage struct {
-	LengthPrefix uint32
-	MessageID    byte // 5 for Bitfield message
-	Bitfield     []byte
-}
-
-func (msg *BitfieldMessage) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.LengthPrefix)
-	binary.Write(buf, binary.BigEndian, msg.MessageID)
-	binary.Write(buf, binary.BigEndian, msg.Bitfield)
-
-	return buf.Bytes()
-}
-
-func DeserializeBitfieldMessage(r io.Reader, lengthPrefix uint32) (BitfieldMessage, error) {
-	var msg BitfieldMessage
-	msg.LengthPrefix = lengthPrefix
-
-	var bitfieldLen = int32(msg.LengthPrefix - 1) // - 1 because lengthPrefix includes byte for MessageID
-
-	msg.Bitfield = make([]byte, bitfieldLen) //creates a byte array of size bitfieldLen
-	binary.Read(r, binary.BigEndian, &msg.Bitfield)
-
-	msg.MessageID = MessageIDBitfield
-	return msg, nil
-}
-
-func NewBitfieldMessage(bitfield []byte) BitfieldMessage {
-	return BitfieldMessage{
-		LengthPrefix: uint32(1 + len(bitfield)),
-		MessageID:    MessageIDBitfield,
-		Bitfield:     bitfield,
-	}
-}
-
-//------------------------------
-
-type RequestMessage struct {
-	LengthPrefix int32
-	MessageID    byte // 6 for Request message
-	Index        int32
-	Begin        int32
-	Length       int32
-}
-
-func (msg *RequestMessage) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.LengthPrefix)
-	binary.Write(buf, binary.BigEndian, msg.MessageID)
-	binary.Write(buf, binary.BigEndian, msg.Index)
-	binary.Write(buf, binary.BigEndian, msg.Begin)
-	binary.Write(buf, binary.BigEndian, msg.Length)
-
-	return buf.Bytes()
-}
-
-func NewRequestMessage(pieceIdx int, blockIdx int) RequestMessage {
-
-	// Serialize and send Request message for a block of the target piece
-	begin := int64(blockIdx) * blockSize
-	length := pieces[pieceIdx].blocks[blockIdx].length
-
-	return RequestMessage{
-		LengthPrefix: 13,
-		MessageID:    MessageIDRequest,
-		Index:        int32(pieceIdx),
-		Begin:        int32(begin),
-		Length:       int32(length),
-	}
-}
-
-//-----------------------------
-
-type CancelMessage struct {
-	LengthPrefix int32
-	MessageID    byte // 8 for Cancel message
-	Index        int32
-	Begin        int32
-	Length       int32
-}
-
-func (msg *CancelMessage) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.LengthPrefix)
-	binary.Write(buf, binary.BigEndian, msg.MessageID)
-	binary.Write(buf, binary.BigEndian, msg.Index)
-	binary.Write(buf, binary.BigEndian, msg.Begin)
-	binary.Write(buf, binary.BigEndian, msg.Length)
-
-	return buf.Bytes()
-}
-
-func DeserializeRequestOrCancelMessage(r io.Reader, messageID byte) (RequestMessage, error) {
-	var msg RequestMessage
-	msg.LengthPrefix = 13
-	msg.MessageID = messageID
-
-	binary.Read(r, binary.BigEndian, &msg.Index)
-	binary.Read(r, binary.BigEndian, &msg.Begin)
-	binary.Read(r, binary.BigEndian, &msg.Length)
-
-	return msg, nil
-}
-
-func NewCancelMessage(index int32, begin int32, length int32) CancelMessage {
-	return CancelMessage{
-		LengthPrefix: 13,
-		MessageID:    MessageIDCancel,
-		Index:        index,
-		Begin:        begin,
-		Length:       length,
-	}
-}
-
-//------------------------------
-
-type PieceMessage struct {
-	LengthPrefix uint32
-	MessageID    byte // 7 for Piece message
-	Index        int32
-	Begin        int32
-	Block        []byte
-}
-
-func (msg *PieceMessage) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.LengthPrefix)
-	binary.Write(buf, binary.BigEndian, msg.MessageID)
-	binary.Write(buf, binary.BigEndian, msg.Index)
-	binary.Write(buf, binary.BigEndian, msg.Begin)
-	binary.Write(buf, binary.BigEndian, msg.Block)
-
-	return buf.Bytes()
-}
-
-func DeserializePieceMessage(r io.Reader, lengthPrefix uint32) (PieceMessage, error) {
-	var msg PieceMessage
-	msg.MessageID = MessageIDPiece
-	msg.LengthPrefix = lengthPrefix
-	var blockSize = msg.LengthPrefix - 9
-
-	binary.Read(r, binary.BigEndian, &msg.Index)
-	binary.Read(r, binary.BigEndian, &msg.Begin)
-
-	//msg.Block = make([]byte, blockSize)
-	//binary.Read(r, binary.BigEndian, &msg.Block)
-
-	msg.Block = make([]byte, blockSize)
-	io.ReadFull(r, msg.Block)
-
-	return msg, nil
-}
-
-func NewPieceMessage(index int32, begin int32, block []byte) PieceMessage {
-	return PieceMessage{
-		LengthPrefix: uint32(9 + len(block)),
-		MessageID:    MessageIDPiece,
-		Index:        index,
-		Begin:        begin,
-		Block:        block,
-	}
-}
-
-//------------------------------
-
-type PortMessage struct {
-	LengthPrefix int32
-	MessageID    byte // 9 for Port message
-	ListenPort   int16
-}
-
-func (msg *PortMessage) Serialize() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, msg.LengthPrefix)
-	binary.Write(buf, binary.BigEndian, msg.MessageID)
-	binary.Write(buf, binary.BigEndian, msg.ListenPort)
-
-	return buf.Bytes()
-}
-
-func DeserializePortMessage(r io.Reader) (PortMessage, error) {
-	var msg PortMessage
-	msg.LengthPrefix = 3
-	msg.MessageID = MessageIDPort
-
-	binary.Read(r, binary.BigEndian, &msg.ListenPort)
-
-	return msg, nil
-}
-
-func NewPort(portNum int16) PortMessage {
-	return PortMessage{
-		LengthPrefix: 3,
-		MessageID:    MessageIDPort,
-		ListenPort:   portNum,
-	}
-}
-
-//------------------------------
-
-// DeserializeMessage reads from an io.Reader (like a net.Conn) and deserializes the message.
-func DeserializeMessage(length uint32, messageBuffer []byte) (interface{}, error) {
-	r := bytes.NewReader(messageBuffer)
-
-	// If the message's length is 0, it must be a keep-alive message
-	if length == 0 {
-		return KeepAliveMessage{}, nil
-	}
-
-	var messageID byte
-	if err := binary.Read(r, binary.BigEndian, &messageID); err != nil {
+func deserializeHandshakeMessage(reader io.Reader) (*HandshakeMessage, error) {
+	var message HandshakeMessage
+
+	err := binary.Read(reader, binary.BigEndian, &message.pStrLen)
+	if err != nil {
 		return nil, err
 	}
 
-	switch messageID {
-	case MessageIDChoke, MessageIDUnChoke, MessageIDInterested, MessageIDNotInterested:
-		// Handle SimpleMessage types, which don't have a payload beyond the message ID.
-		return SimpleMessage{LengthPrefix: length, MessageID: messageID}, nil
-	case MessageIDHave:
-		// Deserialize a Have message.
-		return DeserializeHaveMessage(r)
-	case MessageIDBitfield:
-		return DeserializeBitfieldMessage(r, length)
-	case MessageIDCancel, MessageIDRequest:
-		return DeserializeRequestOrCancelMessage(r, messageID)
-	case MessageIDPiece:
-		return DeserializePieceMessage(r, length)
-	case MessageIDPort:
-		return DeserializePortMessage(r)
-	default:
-		// Unknown message type
-		return nil, errors.New("unknown message ID")
+	ps := make([]byte, message.pStrLen)
+	_, err = io.ReadFull(reader, ps)
+	if err != nil {
+		return nil, err
+	}
+	message.pStr = string(ps)
+
+	message.reserved = make([]byte, 8)
+	io.ReadFull(reader, message.reserved)
+	if err != nil {
+		return nil, err
+	}
+
+	message.infoHash = make([]byte, 20)
+	io.ReadFull(reader, message.infoHash)
+	if err != nil {
+		return nil, err
+	}
+
+	pid := make([]byte, 20)
+	io.ReadFull(reader, pid)
+	if err != nil {
+		return nil, err
+	}
+	message.peerID = string(pid)
+
+	return &message, nil
+}
+
+func newHandshakeMessage() HandshakeMessage {
+	return HandshakeMessage {
+		pStr:     pStr,
+		pStrLen:  pStrLen,
+		reserved: make([]byte, 8),
+		infoHash: infoHash,
+		peerID:   peerID,
 	}
 }
 
-// Sends the parameter serialized message via the parameter connection. Returns 1 if the message was sent successfully, and 0 if not.
-func sendMessage(connState *ConnectionState, serializedMessage []byte, messageType string, successMessage string) int {
-	sentMessage := 0
+type KeepAliveMessage struct {
+	len uint32
+}
+
+func (message *KeepAliveMessage) serialize() []byte {
+	buffer := new(bytes.Buffer)
+	binary.Write(buffer, binary.BigEndian, message.len)
+
+	return buffer.Bytes()
+}
+
+func newKeepAliveMessage() KeepAliveMessage {
+	return KeepAliveMessage{
+		len: 0,
+	}
+}
+
+type ConnectionStateMessage struct {
+	len uint32
+	id  byte
+}
+
+func (message *ConnectionStateMessage) serialize() []byte {
+	buffer := new(bytes.Buffer)
+	binary.Write(buffer, binary.BigEndian, message.len)
+	binary.Write(buffer, binary.BigEndian, message.id)
+
+	return buffer.Bytes()
+}
+
+func newConnectionStateMessage(id byte) ConnectionStateMessage {
+	return ConnectionStateMessage {
+		len: 1,
+		id:  id,
+	}
+}
+
+type HaveMessage struct {
+	len        uint32
+	id         byte
+	pieceIndex uint32
+}
+
+func (message *HaveMessage) serialize() []byte {
+	buffer := new(bytes.Buffer)
+	binary.Write(buffer, binary.BigEndian, message.len)
+	binary.Write(buffer, binary.BigEndian, message.id)
+	binary.Write(buffer, binary.BigEndian, message.pieceIndex)
+
+	return buffer.Bytes()
+}
+
+func deserializeHaveMessage(reader io.Reader, len uint32) (*HaveMessage, error) {
+	var message HaveMessage
+
+	if len != 5 {
+		return nil, errors.New("Received invalid have message length")
+	}
+	message.len = 5
+
+	message.id = messageIDHave
+
+	err := binary.Read(reader, binary.BigEndian, &message.pieceIndex)
+	if err != nil {
+		return nil, err
+	}
+
+	return &message, nil
+}
+
+func newHaveMessage(pieceIndex uint32) HaveMessage {
+	return HaveMessage {
+		len:        5,
+		id:         messageIDHave,
+		pieceIndex: pieceIndex,
+	}
+}
+
+type BitfieldMessage struct {
+	len      uint32
+	id       byte
+	bitfield []byte
+}
+
+func (message *BitfieldMessage) serialize() []byte {
+	buffer := new(bytes.Buffer)
+	binary.Write(buffer, binary.BigEndian, message.len)
+	binary.Write(buffer, binary.BigEndian, message.id)
+	binary.Write(buffer, binary.BigEndian, message.bitfield)
+
+	return buffer.Bytes()
+}
+
+func deserializeBitfieldMessage(reader io.Reader, len uint32) (*BitfieldMessage, error) {
+	var message BitfieldMessage
+
+	if len < 1 + uint32(numPieces) {
+		return nil, errors.New("Received invalid bitfield message length")
+	}
+	message.len = len
+
+	message.id = messageIDBitfield
+
+	message.bitfield = make([]byte, uint32(message.len - 1))
+	err := binary.Read(reader, binary.BigEndian, &message.bitfield)
+	if err != nil {
+		return nil, err
+	}
+	for i := numPieces; i < uint64(len); i++ {
+		if message.bitfield[i] == 1 {
+			return nil, errors.New("Received invalid bitfield message")
+		}
+	}
+
+	return &message, nil
+}
+
+func newBitfieldMessage(bitfield []byte) BitfieldMessage {
+	return BitfieldMessage {
+		len:      uint32(1 + len(bitfield)),
+		id:       messageIDBitfield,
+		bitfield: bitfield,
+	}
+}
+
+type RequestOrCancelMessage struct {
+	len    uint32
+	id     byte
+	index  uint32
+	begin  uint32
+	length uint32
+}
+
+func (message *RequestOrCancelMessage) serialize() []byte {
+	buffer := new(bytes.Buffer)
+	binary.Write(buffer, binary.BigEndian, message.len)
+	binary.Write(buffer, binary.BigEndian, message.id)
+	binary.Write(buffer, binary.BigEndian, message.index)
+	binary.Write(buffer, binary.BigEndian, message.begin)
+	binary.Write(buffer, binary.BigEndian, message.length)
+
+	return buffer.Bytes()
+}
+
+func deserializeRequestOrCancelMessage(reader io.Reader, len uint32, id byte) (*RequestOrCancelMessage, error) {
+
+	var message RequestOrCancelMessage
+	
+	if len != 13 {
+		return nil, errors.New("Received invalid request or cancel message length")
+	}
+	message.len = 13
+
+	message.id = id
+
+	err := binary.Read(reader, binary.BigEndian, &message.index)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Read(reader, binary.BigEndian, &message.begin)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Read(reader, binary.BigEndian, &message.length)
+	if err != nil {
+		return nil, err
+	}
+
+	return &message, nil
+}
+
+func newRequestOrCancelMessage(id byte, index uint32, blockIndex uint32) RequestOrCancelMessage {
+
+	// Serialize and send Request message for a block of the target piece
+	begin := uint32(uint64(blockIndex) * blockSize)
+	length := uint32(pieces[index].blocks[blockIndex].length)
+
+	return RequestOrCancelMessage {
+		len:    13,
+		id:     id,
+		index:  index,
+		begin:  begin,
+		length: length,
+	}
+}
+
+type PieceMessage struct {
+	len   uint32
+	id    byte
+	index uint32
+	begin uint32
+	block []byte
+}
+
+func (message *PieceMessage) serialize() []byte {
+	buffer := new(bytes.Buffer)
+	binary.Write(buffer, binary.BigEndian, message.len)
+	binary.Write(buffer, binary.BigEndian, message.id)
+	binary.Write(buffer, binary.BigEndian, message.index)
+	binary.Write(buffer, binary.BigEndian, message.begin)
+	binary.Write(buffer, binary.BigEndian, message.block)
+
+	return buffer.Bytes()
+}
+
+func deserializePieceMessage(reader io.Reader, len uint32) (*PieceMessage, error) {
+	var message PieceMessage
+
+	if len < 10 {
+		return nil, errors.New("Received invalid piece message length")
+	}
+	message.len = len
+
+	message.id = messageIDPiece
+
+	err := binary.Read(reader, binary.BigEndian, &message.index)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Read(reader, binary.BigEndian, &message.begin)
+	if err != nil {
+		return nil, err
+	}
+
+	message.block = make([]byte, message.len - 9)
+	_, err = io.ReadFull(reader, message.block)
+	if err != nil {
+		return nil, err
+	}
+
+	return &message, nil
+}
+
+func newPieceMessage(index uint32, begin uint32, block []byte) PieceMessage {
+	return PieceMessage {
+		len:   uint32(9 + len(block)),
+		id:    messageIDPiece,
+		index: index,
+		begin: begin,
+		block: block,
+	}
+}
+
+// Sends the parameter serialized message via the parameter connection.
+func sendMessage(connState *ConnectionState, serializedMessage []byte, messageType string, successMessage string) {
 	
 	// Send the message
 	_, err := connState.conn.Write(serializedMessage)
@@ -424,12 +366,51 @@ func sendMessage(connState *ConnectionState, serializedMessage []byte, messageTy
 		if verbose {
 			fmt.Println(successMessage)
 		}
-
-		sentMessage = 1
 	}
 
 	// Update the peer's last-sent time
 	connState.lastSentTime = time.Now()
+}
 
-	return sentMessage
+// Reads from the parameter buffer and both deserializes and returns the message.
+func deserializeMessage(len uint32, buffer []byte) (interface{}, error) {
+
+	// Initialize a reader
+	reader := bytes.NewReader(buffer)
+
+	// If the message length is 0, return a keep-alive message
+	if len == 0 {
+		return KeepAliveMessage {}, nil
+	}
+
+	// Get the message ID
+	var id byte
+	err := binary.Read(reader, binary.BigEndian, &id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Switch on the ID
+	switch id {
+		case messageIDChoke, messageIDUnchoke, messageIDInterested, messageIDNotInterested:
+			if len != 1 {
+				return nil, errors.New("Received invalid connection state message length")
+			}
+			return ConnectionStateMessage {len: len, id: id}, nil
+
+		case messageIDHave:
+			return deserializeHaveMessage(reader, len)
+
+		case messageIDBitfield:
+			return deserializeBitfieldMessage(reader, len)
+
+		case messageIDRequest, messageIDCancel:
+			return deserializeRequestOrCancelMessage(reader, len, id)
+
+		case messageIDPiece:
+			return deserializePieceMessage(reader, len)
+			
+		default:
+			return nil, errors.New("Received invalid message ID")
+	}
 }
