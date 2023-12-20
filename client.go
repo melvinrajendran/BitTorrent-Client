@@ -39,16 +39,16 @@ func main() {
 	go handleFormingConnections()
 	go handleIncomingConnections()
 
+	// Start goroutine to periodically send keep-alive messages and close timed-out connections, respectively
+	go handleKeepAliveMessages()
+	go handleTimeouts()
+
 	// // Start goroutine to periodically send unchoke messages and perform optimistic unchoking, respectively
 	// go handleUnchokeMessages()
 	// go handleOptimisticUnchoking()
 
 	// // Start a goroutine to process incoming request messages
 	// go handleRequestMessages()
-
-	// // Start goroutine to periodically send keep-alive messages and close timed-out connections, respectively
-	// go handleKeepAliveMessages()
-	// go handleTimeouts()
 
 	// go handleEndGame()
 

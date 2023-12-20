@@ -58,7 +58,7 @@ func scrapeTracker() error {
 	assert(err == nil, "Error parsing the scrape URL")
 
 	// Establish a TCP connection to the tracker
-	conn, err := net.Dial("tcp", parsedURL.Host)
+	conn, err := net.Dial("tcp4", parsedURL.Host)
 	assert(err == nil, "Error creating a TCP connection to the tracker")
 	defer conn.Close()
 
@@ -137,7 +137,7 @@ func sendTrackerRequest(event string) {
 	assert(err == nil, "Error parsing the announce URL")
 
 	// Attempt to establish a TCP connection to the tracker
-	conn, err := net.Dial("tcp", parsedURL.Host)
+	conn, err := net.Dial("tcp4", parsedURL.Host)
 	assert(err == nil, "Error forming a TCP connection to the tracker")
 
 	// Send the connection into the channel

@@ -11,7 +11,7 @@ import (
 )
 
 // Array of connections that the client has with remote peers
-var connections []Connection
+var connections []*Connection
 // Array of address-port pairs of connections that the client attempted to form with remote peers
 var attemptedConnections []string
 
@@ -29,8 +29,8 @@ type Connection struct {
 	lastReceivedTime time.Time
 }
 
-func newConnection(conn net.Conn) Connection {
-	connection := Connection {
+func newConnection(conn net.Conn) *Connection {
+	return &Connection {
 		conn:             conn,
 		amChoking:        true,
 		amInterested:     false,
@@ -42,8 +42,6 @@ func newConnection(conn net.Conn) Connection {
 		lastSentTime:     time.Now(),
 		lastReceivedTime: time.Now(),
 	}
-
-	return connection
 }
 
 // Handle actively forming connections to other peers.
@@ -110,7 +108,7 @@ func attemptFormingConnection(peerAddrPort string) {
 	for {
 
 		// Attempt to establish a TCP connection to the peer
-		conn, err := net.Dial("tcp", peerAddrPort)
+		conn, err := net.Dial("tcp4", peerAddrPort)
 		
 		// Increment the number of attempts
 		numAttempts++
@@ -131,7 +129,7 @@ func attemptFormingConnection(peerAddrPort string) {
 		}
 
 		// Handle a successful connection
-		go handleAcceptedConnection(conn, true)
+		go handleSuccessfulConnection(conn, true)
 
 		if verbose {
 			fmt.Printf("[%s] Actively formed a TCP connection\n", conn.RemoteAddr())
@@ -148,7 +146,7 @@ func handleIncomingConnections() {
 	clientAddrPort := fmt.Sprintf(":%d", port)
 
 	// Listen for incoming connections
-	listener, err := net.Listen("tcp", clientAddrPort)
+	listener, err := net.Listen("tcp4", clientAddrPort)
 	assert(err == nil, "Error listening for incoming connections")
 	defer listener.Close()
 
@@ -169,7 +167,7 @@ func handleIncomingConnections() {
 			}
 			
 			// Handle a successful connection
-			go handleAcceptedConnection(conn, false)
+			go handleSuccessfulConnection(conn, false)
 
 			if verbose {
 				fmt.Printf("[%s] Accepted an incoming TCP connection\n", conn.RemoteAddr())
@@ -178,14 +176,56 @@ func handleIncomingConnections() {
 	}
 }
 
-// Handles accepted connections with other peers.
-func handleAcceptedConnection(conn net.Conn, formedConnection bool) {
+// Handles successful connections with other peers.
+func handleSuccessfulConnection(conn net.Conn, formedConnection bool) {
 
 	// Initialize a new connection and add it to the array
 	connection := newConnection(conn)
 	connections = append(connections, connection)
 
-	
+	// // If the client formed the connection, serialize and send the handshake message
+	// if formedConnection {
+	// 	handshakeMessage := newHandshakeMessage()
+	// 	sendMessage(&connection, handshakeMessage.serialize(), "handshake", fmt.Sprintf("[%s] Sent handshake", conn.RemoteAddr()))
+	// }
+
+	// // Receive and deserialize the peer's handshake message
+	// handshakeBuffer := make([]byte, 68)
+	// _, err := io.ReadFull(conn, handshakeBuffer)
+	// if err != nil {
+	// 	return
+	// }
+	// handshakeMessage, err := deserializeHandshakeMessage(bytes.NewReader(handshakeBuffer))
+	// if err != nil || !bytes.Equal(handshakeMessage.infoHash, infoHash) {
+	// 	return
+	// }
+
+	// if verbose {
+	// 	fmt.Printf("[%s] Received handshake\n", conn.RemoteAddr())
+	// }
+}
+
+// Sends keep-alive messages periodically.
+func handleKeepAliveMessages() {
+
+	// Loop indefinitely
+	for {
+
+		// Get the current time
+		currentTime := time.Now()
+
+		// Iterate across the peer connections
+		for _, connection := range connections {
+
+			// Check if at least 1 minute has passed since the client sent a message
+			if currentTime.Sub(connection.lastSentTime) >= 1 * time.Minute {
+
+				// Serialize and send keep-alive message
+				keepAliveMessage := newKeepAliveMessage()
+				sendMessage(connection, keepAliveMessage.serialize(), "keep-alive", fmt.Sprintf("[%s] Sent keep-alive message", connection.conn.RemoteAddr()))
+			}
+		}
+	}
 }
 
 // Closes the parameter connection and removes it the global array.
@@ -204,5 +244,29 @@ func closeConnection(connection *Connection) {
 
 	if verbose {
 		fmt.Printf("[%s] Closed the TCP connection\n", connection.conn.RemoteAddr())
+	}
+}
+
+// Handles timed-out connections by closing them.
+func handleTimeouts() {
+
+	// Loop indefinitely
+	for {
+
+		// Get the current time
+		currentTime := time.Now()
+
+		// Iterate across the peer connections
+		for _, connection := range connections {
+
+			// Check if at least 2 minutes have passed since the client received a message
+			if currentTime.Sub(connection.lastReceivedTime) >= 2 * time.Minute {
+
+				// Close the connection
+				closeConnection(connection)
+
+				break
+			}
+		}
 	}
 }

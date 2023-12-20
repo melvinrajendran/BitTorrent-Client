@@ -25,7 +25,7 @@ var numPieces int64
 // Array of 20-byte SHA1 piece hash values
 var pieceHashes [][]byte
 // Array of pieces to be aggregated into a file
-var pieces []Piece
+var pieces []*Piece
 // File name
 var fileName string
 // File length
@@ -49,7 +49,7 @@ type Piece struct {
 }
 
 // Initializes and returns a new Piece.
-func newPiece(length int64) Piece {
+func newPiece(length int64) *Piece {
 
 	// Compute the number of blocks and the last block's length, which may be irregular
 	numBlocks := int64(math.Ceil(float64(length) / float64(blockSize)))
@@ -70,7 +70,7 @@ func newPiece(length int64) Piece {
 	}
 
 	// Return the new Piece
-	return Piece {
+	return &Piece {
 		isComplete:        false,
 		blocks:            blocks,
 		data:              make([]byte, length),
@@ -95,7 +95,7 @@ func printPieces() {
 	fmt.Println("========================== Pieces ==========================")
 	for i, piece := range pieces {
 		fmt.Printf("Piece %v:\n", i)
-		printPiece(piece)
+		printPiece(*piece)
 	}
 }
 

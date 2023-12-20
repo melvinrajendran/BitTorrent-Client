@@ -89,8 +89,8 @@ func deserializeHandshakeMessage(reader io.Reader) (*HandshakeMessage, error) {
 	return &message, nil
 }
 
-func newHandshakeMessage() HandshakeMessage {
-	return HandshakeMessage {
+func newHandshakeMessage() *HandshakeMessage {
+	return &HandshakeMessage {
 		pStr:     pStr,
 		pStrLen:  pStrLen,
 		reserved: make([]byte, 8),
@@ -110,8 +110,8 @@ func (message *KeepAliveMessage) serialize() []byte {
 	return buffer.Bytes()
 }
 
-func newKeepAliveMessage() KeepAliveMessage {
-	return KeepAliveMessage{
+func newKeepAliveMessage() *KeepAliveMessage {
+	return &KeepAliveMessage{
 		len: 0,
 	}
 }
@@ -129,8 +129,8 @@ func (message *ConnectionStateMessage) serialize() []byte {
 	return buffer.Bytes()
 }
 
-func newConnectionStateMessage(id byte) ConnectionStateMessage {
-	return ConnectionStateMessage {
+func newConnectionStateMessage(id byte) *ConnectionStateMessage {
+	return &ConnectionStateMessage {
 		len: 1,
 		id:  id,
 	}
@@ -169,8 +169,8 @@ func deserializeHaveMessage(reader io.Reader, len uint32) (*HaveMessage, error) 
 	return &message, nil
 }
 
-func newHaveMessage(pieceIndex uint32) HaveMessage {
-	return HaveMessage {
+func newHaveMessage(pieceIndex uint32) *HaveMessage {
+	return &HaveMessage {
 		len:        5,
 		id:         messageIDHave,
 		pieceIndex: pieceIndex,
@@ -216,8 +216,8 @@ func deserializeBitfieldMessage(reader io.Reader, len uint32) (*BitfieldMessage,
 	return &message, nil
 }
 
-func newBitfieldMessage(bitfield []byte) BitfieldMessage {
-	return BitfieldMessage {
+func newBitfieldMessage(bitfield []byte) *BitfieldMessage {
+	return &BitfieldMessage {
 		len:      uint32(1 + len(bitfield)),
 		id:       messageIDBitfield,
 		bitfield: bitfield,
@@ -272,13 +272,13 @@ func deserializeRequestOrCancelMessage(reader io.Reader, len uint32, id byte) (*
 	return &message, nil
 }
 
-func newRequestOrCancelMessage(id byte, index uint32, blockIndex uint32) RequestOrCancelMessage {
+func newRequestOrCancelMessage(id byte, index uint32, blockIndex uint32) *RequestOrCancelMessage {
 
 	// Serialize and send Request message for a block of the target piece
 	begin := uint32(int64(blockIndex) * blockSize)
 	length := uint32(pieces[index].blocks[blockIndex].length)
 
-	return RequestOrCancelMessage {
+	return &RequestOrCancelMessage {
 		len:    13,
 		id:     id,
 		index:  index,
@@ -335,8 +335,8 @@ func deserializePieceMessage(reader io.Reader, len uint32) (*PieceMessage, error
 	return &message, nil
 }
 
-func newPieceMessage(index uint32, begin uint32, block []byte) PieceMessage {
-	return PieceMessage {
+func newPieceMessage(index uint32, begin uint32, block []byte) *PieceMessage {
+	return &PieceMessage {
 		len:   uint32(9 + len(block)),
 		id:    messageIDPiece,
 		index: index,
@@ -370,10 +370,10 @@ func sendMessage(connection *Connection, serializedMessage []byte, messageType s
 		if verbose {
 			fmt.Println(successMessage)
 		}
-	}
 
-	// Update the peer's last-sent time
-	connection.lastSentTime = time.Now()
+		// Update the peer's last-sent time
+		connection.lastSentTime = time.Now()
+	}
 }
 
 // Reads from the parameter buffer and both deserializes and returns the message.
