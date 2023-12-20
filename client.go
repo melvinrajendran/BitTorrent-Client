@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 )
 
@@ -32,17 +31,13 @@ func main() {
 	// Parse the torrent file
 	parseTorrentFile(torrentFile)
 
-	// Declare and add a single goroutine to a wait group
-	var wg sync.WaitGroup
-	wg.Add(1)
-
 	// Start goroutines to send tracker requests and receive tracker responses, respectively
 	go handleTrackerRequests()
 	go handleTrackerResponses()
 
-	// // Start goroutines to actively form new connections and handle incoming connections, respectively
-	// go handleFormingConnections()
-	// go handleIncomingConnections()
+	// Start goroutines to actively form new connections and handle incoming connections, respectively
+	go handleFormingConnections()
+	go handleIncomingConnections()
 
 	// // Start goroutine to periodically send unchoke messages and perform optimistic unchoking, respectively
 	// go handleUnchokeMessages()
@@ -57,11 +52,8 @@ func main() {
 
 	// go handleEndGame()
 
-	// Start a goroutine to shut down gracefully
-	go handleShuttingDown(&wg)
-	
-	// Wait for the shutdown goroutine to finish
-	wg.Wait()
+	// Handle shutting down gracefully
+	handleShuttingDown()
 }
 
 // Generates and returns a peer ID for the client.
@@ -87,8 +79,7 @@ func printClientDetails() {
 }
 
 // Handles gracefully shutting down the client.
-func handleShuttingDown(wg *sync.WaitGroup) {
-	defer wg.Done()
+func handleShuttingDown() {
 
 	// Create a channel via which to receive OS signals
 	sigChannel := make(chan os.Signal, 1)

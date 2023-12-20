@@ -1,3 +1,7 @@
+/*
+ * Structs and functions for messages sent in the peer wire TCP protocol.
+ */
+
 package main
 
 import (
@@ -203,7 +207,7 @@ func deserializeBitfieldMessage(reader io.Reader, len uint32) (*BitfieldMessage,
 	if err != nil {
 		return nil, err
 	}
-	for i := numPieces; i < uint64(len); i++ {
+	for i := numPieces; i < int64(len); i++ {
 		if message.bitfield[i] == 1 {
 			return nil, errors.New("Received invalid bitfield message")
 		}
@@ -271,7 +275,7 @@ func deserializeRequestOrCancelMessage(reader io.Reader, len uint32, id byte) (*
 func newRequestOrCancelMessage(id byte, index uint32, blockIndex uint32) RequestOrCancelMessage {
 
 	// Serialize and send Request message for a block of the target piece
-	begin := uint32(uint64(blockIndex) * blockSize)
+	begin := uint32(int64(blockIndex) * blockSize)
 	length := uint32(pieces[index].blocks[blockIndex].length)
 
 	return RequestOrCancelMessage {
@@ -342,23 +346,23 @@ func newPieceMessage(index uint32, begin uint32, block []byte) PieceMessage {
 }
 
 // Sends the parameter serialized message via the parameter connection.
-func sendMessage(connState *ConnectionState, serializedMessage []byte, messageType string, successMessage string) {
+func sendMessage(connection *Connection, serializedMessage []byte, messageType string, successMessage string) {
 	
 	// Send the message
-	_, err := connState.conn.Write(serializedMessage)
+	_, err := connection.conn.Write(serializedMessage)
 	if err != nil {
 		
 		// Check if the peer has closed the connection
 		if opErr, ok := err.(*net.OpError); ok && opErr.Err.Error() == "write: broken pipe" {
 			if verbose {
-				fmt.Printf("[%s] Peer closed the TCP connection\n", connState.conn.RemoteAddr())
+				fmt.Printf("[%s] Peer closed the TCP connection\n", connection.conn.RemoteAddr())
 			}
 
 			// Close the connection
-			closeConnection(connState)
+			closeConnection(connection)
 		} else {
 			if verbose {
-				fmt.Printf("[%s] Error sending the %s message\n", connState.conn.RemoteAddr(), messageType)
+				fmt.Printf("[%s] Error sending the %s message\n", connection.conn.RemoteAddr(), messageType)
 			}
 		}
 	} else {
@@ -369,7 +373,7 @@ func sendMessage(connState *ConnectionState, serializedMessage []byte, messageTy
 	}
 
 	// Update the peer's last-sent time
-	connState.lastSentTime = time.Now()
+	connection.lastSentTime = time.Now()
 }
 
 // Reads from the parameter buffer and both deserializes and returns the message.

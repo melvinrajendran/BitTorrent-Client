@@ -1,5 +1,5 @@
 /*
- * Functions to handle the Tracker HTTP/HTTPS Protocol.
+ * Functions to handle the tracker HTTP/HTTPS protocol.
  */
 
 package main
@@ -20,9 +20,9 @@ import (
 
 // Number of bytes that the client has uploaded, has downloaded, and has to download, respectively
 var (
-	uploaded   uint64 = 0
-	downloaded uint64 = 0
-	left       uint64
+	uploaded   int64 = 0
+	downloaded int64 = 0
+	left       int64
 )
 // Channel via which to send the last TCP connection that was established
 var connChannel = make(chan net.Conn)
@@ -99,7 +99,7 @@ func scrapeTracker() error {
 	fmt.Println("Files Dictionary:")
 	for key, value := range files {
 		valueMap := value.(map[string]interface{})
-		fmt.Printf("\tKey:\n\t\t%v\n\tValue:\n\t\tComplete: %v\n\t\tDownloaded: %v\n\t\tIncomplete: %v\n", key, valueMap["complete"], valueMap["downloaded"], valueMap["incomplete"])
+		fmt.Printf("\tKey: %v, Value: {Complete: %v, Downloaded: %v, Incomplete: %v}\n", key, valueMap["complete"], valueMap["downloaded"], valueMap["incomplete"])
 	}
 	if ok {
 		fmt.Println("Flags:")
@@ -118,10 +118,10 @@ func sendTrackerRequest(event string) {
 	params := url.Values{}
 	params.Add("info_hash", string(infoHash))
 	params.Add("peer_id", peerID)
-	params.Add("port", strconv.FormatUint(port, 10))
-	params.Add("uploaded", strconv.FormatUint(uploaded, 10))
-	params.Add("downloaded", strconv.FormatUint(downloaded, 10))
-	params.Add("left", strconv.FormatUint(left, 10))
+	params.Add("port", strconv.FormatInt(port, 10))
+	params.Add("uploaded", strconv.FormatInt(uploaded, 10))
+	params.Add("downloaded", strconv.FormatInt(downloaded, 10))
+	params.Add("left", strconv.FormatInt(left, 10))
 	if compact {
 		params.Add("compact", "1")
 	} else {
@@ -165,11 +165,14 @@ func receiveTrackerResponse(conn net.Conn) error {
 	// Read the tracker response from the connection
 	buffer := readLoop(conn)
 
-	// Parse the tracker response and update the last tracker response received
-	trackerResponse, err := parseTrackerResponse(buffer, false)
+	// Parse the tracker response
+	response, err := parseTrackerResponse(buffer, false)
 	if err != nil {
 		return err
 	}
+
+	// Update the last tracker response received
+	trackerResponse = response
 
 	if verbose {
 		// Print the tracker response
@@ -310,7 +313,7 @@ func handleTrackerRequests() {
 	for {
 
 		// Sleep for the interval specified in the last tracker response
-		time.Sleep(time.Duration(trackerResponse["interval"].(uint64)) * time.Second)
+		time.Sleep(time.Duration(trackerResponse["interval"].(int64)) * time.Second)
 
 		// Send a periodic tracker request
 		sendTrackerRequest("")

@@ -1,5 +1,5 @@
 /*
- * Utility functions that are used in the BitTorrent protocol.
+ * Utility functions that are used in the BitTorrent client.
  */
 
 package main
@@ -16,7 +16,7 @@ import (
 // Indicates that the client accepts a compact tracker response
 var	compact bool
 // Port number that the client is listening on
-var	port uint64
+var	port int64
 // Torrent file that contains metadata about the file to be distributed
 var	torrentFile *os.File
 // Indicates that the client prints detailed logs
@@ -74,7 +74,7 @@ func parseFlags() {
 	flag.Parse()
 
 	// Validate the port flag
-	port = uint64(p)
+	port = int64(p)
 	assert(6881 <= port && port <= 6889, "Invalid port, must be an integer between 6881 and 6889")
 
 	// Validate the torrent file path flag by attempting to open the torrent file

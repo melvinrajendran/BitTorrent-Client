@@ -1,9 +1,9 @@
-package main
-
 /*
  * Functions to handle the torrent (metainfo) file, which contains metadata
- * necessary to perform the tracker protocol.
+ * necessary to perform the tracker HTTP/HTTPS protocol.
  */
+
+package main
 
 import (
 	"fmt"
@@ -14,14 +14,14 @@ import (
 )
 
 // Block size
-const blockSize uint64 = 16384
+const blockSize int64 = 16384
 
 // 20-byte SHA1 hash of the encoded info dictionary
 var infoHash []byte
 // Number of bytes in each piece
-var pieceLength uint64
+var pieceLength int64
 // Number of pieces in the file
-var numPieces uint64
+var numPieces int64
 // Array of 20-byte SHA1 piece hash values
 var pieceHashes [][]byte
 // Array of pieces to be aggregated into a file
@@ -29,14 +29,14 @@ var pieces []Piece
 // File name
 var fileName string
 // File length
-var fileLength uint64
+var fileLength int64
 // Announce URL of the tracker
 var announce string
 
 // Stores the status and length of a block in a Piece
 type Block struct {
 	isReceived bool
-	length     uint64
+	length     int64
 }
 
 // Stores the status and data of a piece in the file
@@ -44,20 +44,20 @@ type Piece struct {
 	blocks            []Block
 	data              []byte
 	isComplete        bool
-	numBlocks         uint64
-	numBlocksReceived uint64
+	numBlocks         int64
+	numBlocksReceived int64
 }
 
 // Initializes and returns a new Piece.
-func newPiece(length uint64) Piece {
+func newPiece(length int64) Piece {
 
 	// Compute the number of blocks and the last block's length, which may be irregular
-	numBlocks := uint64(math.Ceil(float64(length) / float64(blockSize)))
-	lastBlockLen := length - (uint64(numBlocks) - 1) * blockSize
+	numBlocks := int64(math.Ceil(float64(length) / float64(blockSize)))
+	lastBlockLen := length - (int64(numBlocks) - 1) * blockSize
 
 	// Initialize the blocks of the new Piece
 	blocks := make([]Block, numBlocks)
-	for i := uint64(0); i < numBlocks; i++ {
+	for i := int64(0); i < numBlocks; i++ {
 		blockLen := blockSize
 		if i == numBlocks - 1 {
 			blockLen = lastBlockLen
@@ -118,15 +118,15 @@ func parseTorrentFile(torrentFile *os.File) error {
 	assert(ok, "Invalid file name in torrent file")
 
 	// Get the length of the file in bytes
-	fileLength, ok = info["length"].(uint64)
+	fileLength, ok = info["length"].(int64)
 	assert(ok, "Invalid length in torrent file")
 
 	// Get the number of bytes in each piece
-	pieceLength, ok = info["piece length"].(uint64)
+	pieceLength, ok = info["piece length"].(int64)
 	assert(ok, "Invalid piece length in torrent file")
 
 	// Compute the number of pieces
-	numPieces = uint64(math.Ceil(float64(fileLength) / float64(pieceLength)))
+	numPieces = int64(math.Ceil(float64(fileLength) / float64(pieceLength)))
 
 	// Get the SHA1 hashes of the pieces as an array of 20-byte hash values
 	piecesStr, ok := info["pieces"].(string)
@@ -140,12 +140,12 @@ func parseTorrentFile(torrentFile *os.File) error {
 	announce = decodedTorrentFile["announce"].(string)
 
 	// Iterate as many times as the number of pieces
-	for i := uint64(0); i < numPieces; i++ {
+	for i := int64(0); i < numPieces; i++ {
 
 		// Compute the length of the current piece, where the last piece may be irregular
 		pieceLen := pieceLength
 		if i == numPieces - 1 {
-			pieceLen = fileLength - (uint64(numPieces) - 1) * pieceLength
+			pieceLen = fileLength - (int64(numPieces) - 1) * pieceLength
 		}
 
 		// Add a new piece to the array
