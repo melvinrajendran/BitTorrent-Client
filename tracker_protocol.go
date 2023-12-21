@@ -117,7 +117,7 @@ func sendTrackerRequest(event string) {
 	// Initialize all query parameters
 	params := url.Values{}
 	params.Add("info_hash", string(infoHash))
-	params.Add("peer_id", peerID)
+	params.Add("peer_id", string(peerID))
 	params.Add("port", strconv.FormatInt(port, 10))
 	params.Add("uploaded", strconv.FormatInt(uploaded, 10))
 	params.Add("downloaded", strconv.FormatInt(downloaded, 10))

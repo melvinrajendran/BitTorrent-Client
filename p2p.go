@@ -67,37 +67,6 @@ package main
 // 	}
 // }
 
-// type ConnectionState struct {
-// 	am_choking       bool
-// 	am_interested    bool
-// 	peer_choking     bool
-// 	peer_interested  bool
-// 	startTime        time.Time
-// 	lastSentTime     time.Time
-// 	lastReceivedTime time.Time
-// 	bytesDownloaded  int64
-// 	download_speed   float64
-// 	bytesUploaded    int64
-// 	upload_speed     float64
-// 	conn 			       net.Conn
-// }
-
-// func newConnectionState(conn net.Conn) *ConnectionState {
-// 	state := ConnectionState{
-// 		am_choking:      true,
-// 		am_interested:   false,
-// 		peer_choking:    true,
-// 		peer_interested: false,
-// 		conn: conn,
-// 		bytesDownloaded: 0,
-// 		startTime: time.Now(),
-// 		lastSentTime: time.Now(),
-// 		lastReceivedTime: time.Now(),
-// 	}
-
-// 	return &state
-// }
-
 // func removeRequest(connection net.Conn, received PieceMessage) {
 // 	for i, pendingReq := range pendingRequests {
 //     if pendingReq.connState.conn == connection && pendingReq.index == received.Index && pendingReq.begin == received.Begin {
@@ -130,115 +99,6 @@ package main
 
 // 	for _, canceledReqs := range canceled {
 // 		removeRequest(canceledReqs, received)
-// 	}
-// }
-
-// // Handle actively forming connections to other peers.
-// func handleFormingConnections() {
-
-// 	// Loop indefinitely
-// 	for {
-
-// 		// Check if the tracker response is not nil
-// 		if trackerResponse != nil {
-
-// 			// Get the list of peers
-// 			peers, ok := trackerResponse["peers"].([]interface{})
-// 			assert(ok, "Error getting the peers")
-
-// 			// Iterate across the list of peers
-// 			for _, peer := range peers {
-
-// 				// Get the current peer's fields
-// 				curr := peer.(map[string]interface{})
-// 				peerAddr := curr["ip"]
-// 				peerPort := curr["port"]
-
-// 				// Compute the peer's address-port pair
-// 				peerAddrPort := fmt.Sprintf("%s:%d", peerAddr, peerPort)
-
-// 				// Determine if there has already been an attempt to connect to the peer
-// 				didAttempt := false
-// 				for _, addrPort := range attemptedConnections {
-// 					if addrPort == peerAddrPort {
-// 						didAttempt = true
-// 						break
-// 					}
-// 				}
-
-// 				// Check if there has not been an attempt to connect to the peer, and there are less than 30 peer connections
-// 				if !didAttempt && numConns < 30 {
-
-// 					// Add the peer's address-port pair to the array of attempted connections
-// 					attemptedConnections = append(attemptedConnections, peerAddrPort)
-
-// 					// Start a goroutine to attempt to form a connection
-// 					go attemptFormingConnection(peerAddrPort)
-// 				}
-// 			}
-// 		}
-// 	}
-// }
-
-// // Attempts to form a TCP connection with the peer with the parameter address-port pair.
-// func attemptFormingConnection(peerAddrPort string) {
-
-// 	// Attempt to establish a TCP connection to the peer
-// 	conn, err := net.Dial("tcp", peerAddrPort)
-// 	if err == nil {
-// 		// Handle a successful connection
-// 		go handleAcceptedConnection(conn)
-
-// 		// Increment the number of peer connections
-// 		numConns++
-
-// 		if verbose {
-// 			fmt.Printf("[%s] Actively formed a TCP connection\n", conn.RemoteAddr())
-// 		}
-// 	} else {
-// 		// Handle a failed connection
-// 		if verbose {
-// 			fmt.Printf("[%s] Error actively forming a TCP connection\n", peerAddrPort)
-// 		}
-// 	}
-// }
-
-// // Handles incoming connections from other peers.
-// func handleIncomingConnections() {
-
-// 	// Compute the client's address-port pair
-// 	clientAddrPort := fmt.Sprintf(":%d", port)
-
-// 	// Listen for incoming connections
-// 	listener, err := net.Listen("tcp", clientAddrPort)
-// 	assert(err == nil, "Error listening for incoming connections")
-// 	defer listener.Close()
-
-// 	// Loop indefinitely
-// 	for {
-
-// 		// Check if the number of peer connections is less than 55
-// 		if numConns < 55 {
-
-// 			// Accept an incoming connection
-// 			conn, err := listener.Accept()
-// 			if err == nil {
-// 				// Handle a successful connection
-// 				go handleAcceptedConnection(conn)
-
-// 				// Increment the number of peer connections
-// 				numConns++
-
-// 				if verbose {
-// 					fmt.Printf("[%s] Accepted an incoming TCP connection\n", conn.RemoteAddr())
-// 				}
-// 			} else {
-// 				// Handle a failed connection
-// 				if verbose {
-// 					fmt.Println("[UNKNOWN] Error accepting an incoming TCP connection")
-// 				}
-// 			}
-// 		}
 // 	}
 // }
 
@@ -734,53 +594,6 @@ package main
 // 	for _, connState := range connectionStates {
 
 // 		sendMessage(connState, haveMsg.Serialize(), "have", fmt.Sprintf("[%s] Sent have message with piece %d", connState.conn.RemoteAddr(), pieceIndex))
-// 	}
-// }
-
-// // Sends keep-alive messages periodically.
-// func handleKeepAliveMessages() {
-
-// 	// Loop indefinitely
-// 	for {
-
-// 		// Get the current time
-// 		currentTime := time.Now()
-
-// 		// Iterate across the peer connections
-// 		for _, cs := range connectionStates {
-
-// 			// Check if at least 1 minute has passed since the client sent a message
-// 			if currentTime.Sub(cs.lastSentTime) >= 1 * time.Minute {
-
-// 				// Serialize and send keep-alive message
-// 				keepAliveMsg := NewKeepAliveMessage()
-// 				sendMessage(cs, keepAliveMsg.Serialize(), "keep-alive", fmt.Sprintf("[%s] Sent keep-alive message", cs.conn.RemoteAddr()))
-// 			}
-// 		}
-// 	}
-// }
-
-// // Handles timed-out connections by closing them.
-// func handleTimeouts() {
-
-// 	// Loop indefinitely
-// 	for {
-
-// 		// Get the current time
-// 		currentTime := time.Now()
-
-// 		// Iterate across the peer connections
-// 		for _, cs := range connectionStates {
-
-// 			// Check if at least 2 minutes have passed since the client received a message
-// 			if currentTime.Sub(cs.lastReceivedTime) >= 2 * time.Minute {
-
-// 				// Close the connection
-// 				closeConnection(cs)
-
-// 				break
-// 			}
-// 		}
 // 	}
 // }
 

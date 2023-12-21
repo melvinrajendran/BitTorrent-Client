@@ -5,11 +5,23 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 )
 
+/*
+ * TODO:
+ * Investigate peer ID encoding for handshake validation
+ * Update lastReceivedTime on receiving a message
+ */
+
+// Bitfield of the client
+var bitfield []byte
 // Array of connections that the client has with remote peers
 var connections []*Connection
 // Array of address-port pairs of connections that the client attempted to form with remote peers
@@ -22,6 +34,7 @@ type Connection struct {
 	amInterested     bool
 	peerChoking      bool
 	peerInterested   bool
+	bitfield         []byte
 	bytesDownloaded  int64
 	bytesUploaded    int64
 	startTime        time.Time
@@ -36,6 +49,7 @@ func newConnection(conn net.Conn) *Connection {
 		amInterested:     false,
 		peerChoking:      true,
 		peerInterested:   false,
+		bitfield:         make([]byte, numPieces),
 		bytesDownloaded:  0,
 		bytesUploaded:    0,
 		startTime:        time.Now(),
@@ -64,6 +78,7 @@ func handleFormingConnections() {
 
 				// Compute the current peer's address-port pair
 				peerDict := peer.(map[string]interface{})
+				peerID := peerDict["peer id"].(string)
 				peerAddrPort := fmt.Sprintf("%s:%d", peerDict["ip"], peerDict["port"])
 
 				shouldAttempt := true
@@ -91,7 +106,7 @@ func handleFormingConnections() {
 					attemptedConnections = append(attemptedConnections, peerAddrPort)
 
 					// Start a goroutine to attempt to form a connection
-					go attemptFormingConnection(peerAddrPort)
+					go attemptFormingConnection(peerAddrPort, peerID)
 				}
 			}
 		}
@@ -99,7 +114,7 @@ func handleFormingConnections() {
 }
 
 // Attempts to form a TCP connection with the peer with the parameter address-port pair.
-func attemptFormingConnection(peerAddrPort string) {
+func attemptFormingConnection(peerAddrPort string, peerID string) {
 
 	// Initialize the number of attempts
 	numAttempts := 0
@@ -129,7 +144,7 @@ func attemptFormingConnection(peerAddrPort string) {
 		}
 
 		// Handle a successful connection
-		go handleSuccessfulConnection(conn, true)
+		go handleSuccessfulConnection(conn, peerID)
 
 		if verbose {
 			fmt.Printf("[%s] Actively formed a TCP connection\n", conn.RemoteAddr())
@@ -167,7 +182,7 @@ func handleIncomingConnections() {
 			}
 			
 			// Handle a successful connection
-			go handleSuccessfulConnection(conn, false)
+			go handleSuccessfulConnection(conn, "")
 
 			if verbose {
 				fmt.Printf("[%s] Accepted an incoming TCP connection\n", conn.RemoteAddr())
@@ -177,32 +192,37 @@ func handleIncomingConnections() {
 }
 
 // Handles successful connections with other peers.
-func handleSuccessfulConnection(conn net.Conn, formedConnection bool) {
+func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 	// Initialize a new connection and add it to the array
 	connection := newConnection(conn)
 	connections = append(connections, connection)
 
-	// // If the client formed the connection, serialize and send the handshake message
-	// if formedConnection {
-	// 	handshakeMessage := newHandshakeMessage()
-	// 	sendMessage(&connection, handshakeMessage.serialize(), "handshake", fmt.Sprintf("[%s] Sent handshake", conn.RemoteAddr()))
-	// }
+	// Serialize and send the handshake message
+	handshakeMessage := newHandshakeMessage()
+	sendMessage(connection, handshakeMessage.serialize(), "handshake", fmt.Sprintf("[%s] Sent handshake message", conn.RemoteAddr()))
 
-	// // Receive and deserialize the peer's handshake message
-	// handshakeBuffer := make([]byte, 68)
-	// _, err := io.ReadFull(conn, handshakeBuffer)
-	// if err != nil {
-	// 	return
-	// }
-	// handshakeMessage, err := deserializeHandshakeMessage(bytes.NewReader(handshakeBuffer))
-	// if err != nil || !bytes.Equal(handshakeMessage.infoHash, infoHash) {
-	// 	return
-	// }
+	// Receive and deserialize the peer's handshake message
+	handshakeBuffer := make([]byte, 68)
+	_, err := io.ReadFull(conn, handshakeBuffer)
+	if err != nil {
+		return
+	}
+	handshakeMessage, err = deserializeHandshakeMessage(bytes.NewReader(handshakeBuffer))
+	if err != nil || !bytes.Equal(handshakeMessage.infoHash, infoHash) || (peerID != "" && strconv.QuoteToASCII(handshakeMessage.peerID) != strings.Replace(strconv.QuoteToASCII(peerID), `\u00`, `\x`, -1)) {
+		return
+	}
+	if verbose {
+		fmt.Printf("[%s] Received handshake message\n", conn.RemoteAddr())
+	}
 
-	// if verbose {
-	// 	fmt.Printf("[%s] Received handshake\n", conn.RemoteAddr())
-	// }
+	// Check if at least 1 piece is completed
+	if numPiecesCompleted >= 1 {
+
+		// Serialize and send the bitfield message
+		bitfieldMessage := newBitfieldMessage()
+		sendMessage(connection, bitfieldMessage.serialize(), "bitfield", fmt.Sprintf("[%s] Sent bitfield message with bitfield %08b", conn.RemoteAddr(), bitfield))
+	}
 }
 
 // Sends keep-alive messages periodically.

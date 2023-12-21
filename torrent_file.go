@@ -26,6 +26,8 @@ var numPieces int64
 var pieceHashes [][]byte
 // Array of pieces to be aggregated into a file
 var pieces []*Piece
+// Number of pieces completed
+var numPiecesCompleted = 0
 // File name
 var fileName string
 // File length
@@ -127,6 +129,9 @@ func parseTorrentFile(torrentFile *os.File) error {
 
 	// Compute the number of pieces
 	numPieces = int64(math.Ceil(float64(fileLength) / float64(pieceLength)))
+
+	// Initialize the bitfield of the client
+	bitfield = make([]byte, numPieces)
 
 	// Get the SHA1 hashes of the pieces as an array of 20-byte hash values
 	piecesStr, ok := info["pieces"].(string)

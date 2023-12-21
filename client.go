@@ -72,7 +72,7 @@ func generatePeerID() {
 // Prints the client's command-line flags and peer ID.
 func printClientDetails() {
 	fmt.Println("====================== Client Details ======================")
-	fmt.Printf("Compact: %v\nPeer ID: %v\nPort: %v\nVerbose: %v\n", compact, peerID, port, verbose)
+	fmt.Printf("Compact: %v\nPeer ID: %s\nPort: %v\nVerbose: %v\n", compact, peerID, port, verbose)
 	if !verbose {
 		fmt.Println("===================== Transfer Details =====================")
 	}
