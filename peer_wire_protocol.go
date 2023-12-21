@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -222,6 +223,106 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 		// Serialize and send the bitfield message
 		bitfieldMessage := newBitfieldMessage()
 		sendMessage(connection, bitfieldMessage.serialize(), "bitfield", fmt.Sprintf("[%s] Sent bitfield message with bitfield %08b", conn.RemoteAddr(), bitfield))
+	}
+
+	// Loop indefinitely
+	for {
+
+		// Initialize a buffer to store the length of messages received from the peer
+		lengthBuffer := make([]byte, 4)
+
+		// Read the message length from the connection
+		_, err = io.ReadFull(conn, lengthBuffer)
+		if err != nil {
+			return
+		}
+
+		// Initialize the message length
+		length := binary.BigEndian.Uint32(lengthBuffer)
+
+		// Initialize a buffer to store the message received from the peer
+		messageBuffer := make([]byte, length)
+
+		// Read the message from the connection
+		_, err = io.ReadFull(conn, messageBuffer)
+		if err != nil {
+			return
+		}
+
+		// Deserialize the message
+		message, err := deserializeMessage(length, messageBuffer)
+		if err != nil {
+			return
+		}
+
+		// Update the peer's last-received time
+		connection.lastReceivedTime = time.Now()
+
+		// Switch on the message type
+		switch message := message.(type) {
+
+			case KeepAliveMessage:
+				break
+
+			case ConnectionMessage:
+
+				// Switch on the message ID
+				switch message.id {
+
+					case messageIDChoke:
+						break
+
+					case messageIDUnchoke:
+						break
+
+					case messageIDInterested:
+						break
+
+					case messageIDNotInterested:
+						break
+
+					default:
+						if verbose {
+							fmt.Printf("[%s] Received invalid message ID\n", conn.RemoteAddr())
+						}
+						return
+				}
+				break
+
+			case HaveMessage:
+				break
+
+			case BitfieldMessage:
+				break
+
+			case RequestOrCancelMessage:
+
+				// Switch on the message ID
+				switch message.id {
+
+					case messageIDRequest:
+						break
+
+					case messageIDCancel:
+						break
+
+					default:
+						if verbose {
+							fmt.Printf("[%s] Received invalid message ID\n", conn.RemoteAddr())
+						}
+						return
+				}
+				break
+
+			case PieceMessage:
+				break
+
+			default:
+				if verbose {
+					fmt.Printf("[%s] Received invalid message type\n", conn.RemoteAddr())
+				}
+				return
+		}
 	}
 }
 

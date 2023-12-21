@@ -116,19 +116,19 @@ func (message *KeepAliveMessage) serialize() []byte {
 	return buffer.Bytes()
 }
 
-type ConnectionStateMessage struct {
+type ConnectionMessage struct {
 	len uint32
 	id  byte
 }
 
-func newConnectionStateMessage(id byte) *ConnectionStateMessage {
-	return &ConnectionStateMessage {
+func newConnectionMessage(id byte) *ConnectionMessage {
+	return &ConnectionMessage {
 		len: 1,
 		id:  id,
 	}
 }
 
-func (message *ConnectionStateMessage) serialize() []byte {
+func (message *ConnectionMessage) serialize() []byte {
 	buffer := new(bytes.Buffer)
 	binary.Write(buffer, binary.BigEndian, message.len)
 	binary.Write(buffer, binary.BigEndian, message.id)
@@ -400,7 +400,7 @@ func deserializeMessage(len uint32, buffer []byte) (interface{}, error) {
 			if len != 1 {
 				return nil, errors.New("Received invalid connection state message length")
 			}
-			return ConnectionStateMessage {len: len, id: id}, nil
+			return ConnectionMessage {len: len, id: id}, nil
 
 		case messageIDHave:
 			return deserializeHaveMessage(reader, len)
