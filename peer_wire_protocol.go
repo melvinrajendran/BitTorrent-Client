@@ -17,8 +17,6 @@ import (
 
 /*
  * TODO:
- * Investigate peer ID encoding for handshake validation
- * Update lastReceivedTime on receiving a message
  */
 
 // Bitfield of the client
@@ -211,6 +209,9 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 	}
 	handshakeMessage, err = deserializeHandshakeMessage(bytes.NewReader(handshakeBuffer))
 	if err != nil || !bytes.Equal(handshakeMessage.infoHash, infoHash) || (peerID != "" && strconv.QuoteToASCII(handshakeMessage.peerID) != strings.Replace(strconv.QuoteToASCII(peerID), `\u00`, `\x`, -1)) {
+		if verbose {
+			fmt.Printf("[%s] Received invalid handshake message\n", conn.RemoteAddr())
+		}
 		return
 	}
 	if verbose {
@@ -260,15 +261,13 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 		// Switch on the message type
 		switch message := message.(type) {
-
 			case KeepAliveMessage:
+				// Do nothing
 				break
 
 			case ConnectionMessage:
-
 				// Switch on the message ID
 				switch message.id {
-
 					case messageIDChoke:
 						break
 
@@ -280,12 +279,6 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 					case messageIDNotInterested:
 						break
-
-					default:
-						if verbose {
-							fmt.Printf("[%s] Received invalid message ID\n", conn.RemoteAddr())
-						}
-						return
 				}
 				break
 
@@ -296,32 +289,18 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				break
 
 			case RequestOrCancelMessage:
-
 				// Switch on the message ID
 				switch message.id {
-
 					case messageIDRequest:
 						break
 
 					case messageIDCancel:
 						break
-
-					default:
-						if verbose {
-							fmt.Printf("[%s] Received invalid message ID\n", conn.RemoteAddr())
-						}
-						return
 				}
 				break
 
 			case PieceMessage:
 				break
-
-			default:
-				if verbose {
-					fmt.Printf("[%s] Received invalid message type\n", conn.RemoteAddr())
-				}
-				return
 		}
 	}
 }

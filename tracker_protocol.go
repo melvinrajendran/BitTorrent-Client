@@ -253,7 +253,7 @@ func parseTrackerResponse(buffer *bytes.Buffer, isScrape bool) (map[string]inter
 			peersList = append(peersList, map[string]interface{}{
 				"peer id": "",
 				"ip":      net.IP(address).String(),
-				"port":    binary.BigEndian.Uint64([]byte(port)),
+				"port":    int64(binary.BigEndian.Uint16([]byte(port))),
 			})
 		}
 
