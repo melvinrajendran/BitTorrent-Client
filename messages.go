@@ -62,41 +62,41 @@ func (message *HandshakeMessage) serialize() []byte {
 	return buffer.Bytes()
 }
 
-func deserializeHandshakeMessage(reader io.Reader) (*HandshakeMessage, error) {
+func deserializeHandshakeMessage(reader io.Reader) (HandshakeMessage, error) {
 	var message HandshakeMessage
 
 	err := binary.Read(reader, binary.BigEndian, &message.pStrLen)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
 	ps := make([]byte, message.pStrLen)
 	_, err = io.ReadFull(reader, ps)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 	message.pStr = string(ps)
 
 	message.reserved = make([]byte, 8)
 	io.ReadFull(reader, message.reserved)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
 	message.infoHash = make([]byte, 20)
 	io.ReadFull(reader, message.infoHash)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
 	pid := make([]byte, 20)
 	io.ReadFull(reader, pid)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 	message.peerID = string(pid)
 
-	return &message, nil
+	return message, nil
 }
 
 type KeepAliveMessage struct {
@@ -159,11 +159,11 @@ func (message *HaveMessage) serialize() []byte {
 	return buffer.Bytes()
 }
 
-func deserializeHaveMessage(reader io.Reader, len uint32) (*HaveMessage, error) {
+func deserializeHaveMessage(reader io.Reader, len uint32) (HaveMessage, error) {
 	var message HaveMessage
 
 	if len != 5 {
-		return nil, errors.New("Received invalid have message length")
+		return message, errors.New("Received invalid have message length")
 	}
 	message.len = 5
 
@@ -171,10 +171,10 @@ func deserializeHaveMessage(reader io.Reader, len uint32) (*HaveMessage, error) 
 
 	err := binary.Read(reader, binary.BigEndian, &message.pieceIndex)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
-	return &message, nil
+	return message, nil
 }
 
 type BitfieldMessage struct {
@@ -200,11 +200,11 @@ func (message *BitfieldMessage) serialize() []byte {
 	return buffer.Bytes()
 }
 
-func deserializeBitfieldMessage(reader io.Reader, len uint32) (*BitfieldMessage, error) {
+func deserializeBitfieldMessage(reader io.Reader, len uint32) (BitfieldMessage, error) {
 	var message BitfieldMessage
 
 	if (int64((len - 1) * 8) < numPieces) {
-		return nil, errors.New("Received invalid bitfield message length")
+		return message, errors.New("Received invalid bitfield message length")
 	}
 	message.len = len
 
@@ -213,19 +213,19 @@ func deserializeBitfieldMessage(reader io.Reader, len uint32) (*BitfieldMessage,
 	message.bitfield = make([]byte, uint32(message.len - 1))
 	err := binary.Read(reader, binary.BigEndian, &message.bitfield)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 	for i, byteVal := range message.bitfield {
 		for j := 7; j >= 0; j-- {
 			bitVal := (byteVal >> uint(j)) & 1
 
 			if int64(i * 8 + (7 - j)) >= numPieces && bitVal == 1 {
-				return nil, errors.New("Received invalid bitfield message")
+				return message, errors.New("Received invalid bitfield message")
 			}
 		}
 	}
 
-	return &message, nil
+	return message, nil
 }
 
 type RequestOrCancelMessage struct {
@@ -262,12 +262,12 @@ func (message *RequestOrCancelMessage) serialize() []byte {
 	return buffer.Bytes()
 }
 
-func deserializeRequestOrCancelMessage(reader io.Reader, len uint32, id byte) (*RequestOrCancelMessage, error) {
+func deserializeRequestOrCancelMessage(reader io.Reader, len uint32, id byte) (RequestOrCancelMessage, error) {
 
 	var message RequestOrCancelMessage
 	
 	if len != 13 {
-		return nil, errors.New("Received invalid request or cancel message length")
+		return message, errors.New("Received invalid request or cancel message length")
 	}
 	message.len = 13
 
@@ -275,20 +275,20 @@ func deserializeRequestOrCancelMessage(reader io.Reader, len uint32, id byte) (*
 
 	err := binary.Read(reader, binary.BigEndian, &message.index)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
 	err = binary.Read(reader, binary.BigEndian, &message.begin)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
 	err = binary.Read(reader, binary.BigEndian, &message.length)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
-	return &message, nil
+	return message, nil
 }
 
 type PieceMessage struct {
@@ -320,11 +320,11 @@ func (message *PieceMessage) serialize() []byte {
 	return buffer.Bytes()
 }
 
-func deserializePieceMessage(reader io.Reader, len uint32) (*PieceMessage, error) {
+func deserializePieceMessage(reader io.Reader, len uint32) (PieceMessage, error) {
 	var message PieceMessage
 
 	if len < 10 {
-		return nil, errors.New("Received invalid piece message length")
+		return message, errors.New("Received invalid piece message length")
 	}
 	message.len = len
 
@@ -332,21 +332,21 @@ func deserializePieceMessage(reader io.Reader, len uint32) (*PieceMessage, error
 
 	err := binary.Read(reader, binary.BigEndian, &message.index)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
 	err = binary.Read(reader, binary.BigEndian, &message.begin)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
 	message.block = make([]byte, message.len - 9)
 	_, err = io.ReadFull(reader, message.block)
 	if err != nil {
-		return nil, err
+		return message, err
 	}
 
-	return &message, nil
+	return message, nil
 }
 
 // Sends the parameter serialized message via the parameter connection.

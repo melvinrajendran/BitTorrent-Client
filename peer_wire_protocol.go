@@ -207,8 +207,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 	if err != nil {
 		return
 	}
-	handshakeMessage, err = deserializeHandshakeMessage(bytes.NewReader(handshakeBuffer))
-	if err != nil || !bytes.Equal(handshakeMessage.infoHash, infoHash) || (peerID != "" && strconv.QuoteToASCII(handshakeMessage.peerID) != strings.Replace(strconv.QuoteToASCII(peerID), `\u00`, `\x`, -1)) {
+	receivedHandshakeMessage, err := deserializeHandshakeMessage(bytes.NewReader(handshakeBuffer))
+	if err != nil || !bytes.Equal(receivedHandshakeMessage.infoHash, infoHash) || (peerID != "" && strconv.QuoteToASCII(receivedHandshakeMessage.peerID) != strings.Replace(strconv.QuoteToASCII(peerID), `\u00`, `\x`, -1)) {
 		if verbose {
 			fmt.Printf("[%s] Received invalid handshake message\n", conn.RemoteAddr())
 		}
@@ -305,6 +305,12 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 						// The peer became not interested the client
 						connection.peerInterested = false
 						break
+
+					default:
+						if verbose {
+							fmt.Printf("[%s] Received invalid message ID\n", conn.RemoteAddr())
+						}
+						return
 				}
 				break
 
@@ -334,6 +340,12 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 							fmt.Printf("[%s] Received cancel message with index %d, begin %d, and length %d\n", conn.RemoteAddr(), message.index, message.begin, message.length)
 						}
 						break
+
+					default:
+						if verbose {
+							fmt.Printf("[%s] Received invalid message ID\n", conn.RemoteAddr())
+						}
+						return
 				}
 				break
 
@@ -342,6 +354,12 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 					fmt.Printf("[%s] Received request message with index %d and begin %d\n", conn.RemoteAddr(), message.index, message.begin)
 				}
 				break
+
+			default:
+				if verbose {
+					fmt.Printf("[%s] Received invalid message type\n", conn.RemoteAddr())
+				}
+				return
 		}
 	}
 }
