@@ -131,7 +131,7 @@ func parseTorrentFile(torrentFile *os.File) error {
 	numPieces = int64(math.Ceil(float64(fileLength) / float64(pieceLength)))
 
 	// Initialize the bitfield of the client
-	bitfield = make([]byte, numPieces)
+	bitfield = make([]byte, int64(math.Ceil(float64(numPieces) / float64(8))))
 
 	// Get the SHA1 hashes of the pieces as an array of 20-byte hash values
 	piecesStr, ok := info["pieces"].(string)

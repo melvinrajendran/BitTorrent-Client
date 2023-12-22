@@ -293,7 +293,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 							fmt.Printf("[%s] Received interested message\n", conn.RemoteAddr())
 						}
 
-						// The peer became interested the client
+						// The peer became interested in the client
 						connection.peerInterested = true
 						break
 
@@ -302,7 +302,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 							fmt.Printf("[%s] Received not interested message\n", conn.RemoteAddr())
 						}
 
-						// The peer became not interested the client
+						// The peer became not interested in the client
 						connection.peerInterested = false
 						break
 
@@ -324,6 +324,39 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				if verbose {
 					fmt.Printf("[%s] Received bitfield message with bitfield %08b\n", conn.RemoteAddr(), message.bitfield)
 				}
+
+				// Update the peer's bitfield
+				connection.bitfield = message.bitfield
+
+				// Iterate across the bytes in the bitfields of the client and peer
+				for i := 0; i < len(connection.bitfield); i++ {
+
+					// Iterate across the bits in the current byte
+					for j := 0; j < 8; j++ {
+
+						// Get the current bit in the bitfields of the client and peer
+						clientBit := (bitfield[i] >> uint8(j)) & 1
+						peerBit := (connection.bitfield[i] >> uint8(j)) & 1
+	
+						// Check if the peer has a piece that the client does not
+						if clientBit == 0 && peerBit == 1 {
+							
+							// The client became interested in the peer
+							connection.amInterested = true
+
+							break
+						}
+					}
+				}
+
+				// Check if the client became interested in the peer
+				if connection.amInterested {
+
+					// Serialize and send an interested message
+					interestedMessage := newConnectionMessage(messageIDInterested)
+					sendMessage(connection, interestedMessage.serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", conn.RemoteAddr()))
+				}
+
 				break
 
 			case RequestOrCancelMessage:

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"time"
 )
@@ -203,23 +204,23 @@ func (message *BitfieldMessage) serialize() []byte {
 func deserializeBitfieldMessage(reader io.Reader, len uint32) (BitfieldMessage, error) {
 	var message BitfieldMessage
 
-	if (int64((len - 1) * 8) < numPieces) {
+	if (int64(len - 1) != int64(math.Ceil(float64(numPieces) / float64(8)))) {
 		return message, errors.New("Received invalid bitfield message length")
 	}
 	message.len = len
 
 	message.id = messageIDBitfield
 
-	message.bitfield = make([]byte, uint32(message.len - 1))
+	message.bitfield = make([]byte, message.len - 1)
 	err := binary.Read(reader, binary.BigEndian, &message.bitfield)
 	if err != nil {
 		return message, err
 	}
-	for i, byteVal := range message.bitfield {
-		for j := 7; j >= 0; j-- {
-			bitVal := (byteVal >> uint(j)) & 1
+	for i := 0; i < int(message.len - 1); i++ {
+		for j := 0; j < 8; j++ {
+			bit := (message.bitfield[i] >> uint8(j)) & 1
 
-			if int64(i * 8 + (7 - j)) >= numPieces && bitVal == 1 {
+			if int64(i * 8 + (7 - j)) >= numPieces && bit == 1 {
 				return message, errors.New("Received invalid bitfield message")
 			}
 		}
