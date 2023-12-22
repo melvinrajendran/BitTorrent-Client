@@ -262,44 +262,85 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 		// Switch on the message type
 		switch message := message.(type) {
 			case KeepAliveMessage:
-				// Do nothing
+				if verbose {
+					fmt.Printf("[%s] Received keep-alive message\n", conn.RemoteAddr())
+				}
 				break
 
 			case ConnectionMessage:
 				// Switch on the message ID
 				switch message.id {
 					case messageIDChoke:
+						if verbose {
+							fmt.Printf("[%s] Received choke message\n", conn.RemoteAddr())
+						}
+
+						// The peer choked the client
+						connection.peerChoking = true
 						break
 
 					case messageIDUnchoke:
+						if verbose {
+							fmt.Printf("[%s] Received unchoke message\n", conn.RemoteAddr())
+						}
+
+						// The peer unchoked the client
+						connection.peerChoking = false
 						break
 
 					case messageIDInterested:
+						if verbose {
+							fmt.Printf("[%s] Received interested message\n", conn.RemoteAddr())
+						}
+
+						// The peer became interested the client
+						connection.peerInterested = true
 						break
 
 					case messageIDNotInterested:
+						if verbose {
+							fmt.Printf("[%s] Received not interested message\n", conn.RemoteAddr())
+						}
+
+						// The peer became not interested the client
+						connection.peerInterested = false
 						break
 				}
 				break
 
 			case HaveMessage:
+				if verbose {
+					fmt.Printf("[%s] Received have message with piece index %d\n", conn.RemoteAddr(), message.pieceIndex)
+				}
 				break
 
 			case BitfieldMessage:
+				if verbose {
+					fmt.Printf("[%s] Received bitfield message with bitfield %08b\n", conn.RemoteAddr(), message.bitfield)
+				}
 				break
 
 			case RequestOrCancelMessage:
 				// Switch on the message ID
 				switch message.id {
 					case messageIDRequest:
+						if verbose {
+							fmt.Printf("[%s] Received request message with index %d, begin %d, and length %d\n", conn.RemoteAddr(), message.index, message.begin, message.length)
+						}
 						break
 
 					case messageIDCancel:
+						if verbose {
+							fmt.Printf("[%s] Received cancel message with index %d, begin %d, and length %d\n", conn.RemoteAddr(), message.index, message.begin, message.length)
+						}
 						break
 				}
 				break
 
 			case PieceMessage:
+				if verbose {
+					fmt.Printf("[%s] Received request message with index %d and begin %d\n", conn.RemoteAddr(), message.index, message.begin)
+				}
 				break
 		}
 	}

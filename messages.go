@@ -203,7 +203,7 @@ func (message *BitfieldMessage) serialize() []byte {
 func deserializeBitfieldMessage(reader io.Reader, len uint32) (*BitfieldMessage, error) {
 	var message BitfieldMessage
 
-	if len < 1 + uint32(numPieces) {
+	if (int64((len - 1) * 8) < numPieces) {
 		return nil, errors.New("Received invalid bitfield message length")
 	}
 	message.len = len
@@ -215,9 +215,13 @@ func deserializeBitfieldMessage(reader io.Reader, len uint32) (*BitfieldMessage,
 	if err != nil {
 		return nil, err
 	}
-	for i := numPieces; i < int64(len); i++ {
-		if message.bitfield[i] == 1 {
-			return nil, errors.New("Received invalid bitfield message")
+	for i, byteVal := range message.bitfield {
+		for j := 7; j >= 0; j-- {
+			bitVal := (byteVal >> uint(j)) & 1
+
+			if int64(i * 8 + (7 - j)) >= numPieces && bitVal == 1 {
+				return nil, errors.New("Received invalid bitfield message")
+			}
 		}
 	}
 
