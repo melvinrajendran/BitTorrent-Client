@@ -157,11 +157,8 @@ func parseTorrentFile(torrentFile *os.File) error {
 		pieces = append(pieces, newPiece(pieceLen))
 	}
 
-	if verbose {
-		// Print the torrent file and pieces
-		printTorrentFile(decodedTorrentFile)
-		printPieces()
-	}
+	// Print the torrent file
+	printTorrentFile(decodedTorrentFile)
 
 	return nil
 }
@@ -179,5 +176,8 @@ func printTorrentFile(torrentFile map[string]interface{}) {
 		} else {
 			fmt.Printf("Key: %v, Value: %v\n", key, value)
 		}
+	}
+	if !verbose {
+		fmt.Println("===================== Transfer Details =====================")
 	}
 }

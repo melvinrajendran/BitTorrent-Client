@@ -327,7 +327,7 @@ func handleTrackerResponses() {
 	for {
 
 		// Receive a connection from the channel
-		conn, ok := <-connChannel
+		conn, ok := <- connChannel
 
 		// If the channel is closed, exit the loop
 		if !ok {

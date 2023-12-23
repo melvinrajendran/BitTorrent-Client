@@ -43,15 +43,6 @@ func main() {
 	go handleKeepAliveMessages()
 	go handleTimeouts()
 
-	// // Start goroutine to periodically send unchoke messages and perform optimistic unchoking, respectively
-	// go handleUnchokeMessages()
-	// go handleOptimisticUnchoking()
-
-	// // Start a goroutine to process incoming request messages
-	// go handleRequestMessages()
-
-	// go handleEndGame()
-
 	// Handle shutting down gracefully
 	handleShuttingDown()
 }
@@ -73,9 +64,6 @@ func generatePeerID() {
 func printClientDetails() {
 	fmt.Println("====================== Client Details ======================")
 	fmt.Printf("Compact: %v\nPeer ID: %s\nPort: %v\nVerbose: %v\n", compact, peerID, port, verbose)
-	if !verbose {
-		fmt.Println("===================== Transfer Details =====================")
-	}
 }
 
 // Handles gracefully shutting down the client.
@@ -88,7 +76,7 @@ func handleShuttingDown() {
 	signal.Notify(sigChannel, os.Interrupt, syscall.SIGINT)
 
 	// Block until a signal is received
-	<-sigChannel
+	<- sigChannel
 
 	// Send a tracker request containing the event 'stopped'
 	sendTrackerRequest("stopped")

@@ -17,6 +17,7 @@ import (
 
 /*
  * TODO:
+ * DESIGN PIECE DOWNLOADING STRAT
  */
 
 // Bitfield of the client
@@ -318,6 +319,21 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				if verbose {
 					fmt.Printf("[%s] Received have message with piece index %d\n", conn.RemoteAddr(), message.pieceIndex)
 				}
+
+				// Update the peer's bitfield
+				connection.bitfield[message.pieceIndex] = 1
+
+				// Check if the peer has a piece that the client does not and the client is not interested in the peer
+				if bitfield[message.pieceIndex] == 0 && !connection.amInterested {
+
+					// The client became interested in the peer
+					connection.amInterested = true
+
+					// Serialize and send an interested message
+					interestedMessage := newConnectionMessage(messageIDInterested)
+					sendMessage(connection, interestedMessage.serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", conn.RemoteAddr()))
+				}
+
 				break
 
 			case BitfieldMessage:
@@ -338,24 +354,22 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 						clientBit := (bitfield[i] >> uint8(j)) & 1
 						peerBit := (connection.bitfield[i] >> uint8(j)) & 1
 	
-						// Check if the peer has a piece that the client does not
-						if clientBit == 0 && peerBit == 1 {
-							
+						// Check if the peer has a piece that the client does not and the client is not interested in the peer
+						if clientBit == 0 && peerBit == 1 && !connection.amInterested {
+
 							// The client became interested in the peer
 							connection.amInterested = true
 
-							break
+							// Serialize and send an interested message
+							interestedMessage := newConnectionMessage(messageIDInterested)
+							sendMessage(connection, interestedMessage.serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", conn.RemoteAddr()))
+
+							goto sentInterested
 						}
 					}
 				}
 
-				// Check if the client became interested in the peer
-				if connection.amInterested {
-
-					// Serialize and send an interested message
-					interestedMessage := newConnectionMessage(messageIDInterested)
-					sendMessage(connection, interestedMessage.serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", conn.RemoteAddr()))
-				}
+				sentInterested:
 
 				break
 
