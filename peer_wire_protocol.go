@@ -76,6 +76,7 @@ type Connection struct {
 	bitfield         []byte
 	bytesDownloaded  int64
 	bytesUploaded    int64
+	requestQueue     []*Request
 	startTime        time.Time
 	lastSentTime     time.Time
 	lastReceivedTime time.Time
@@ -274,10 +275,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 		sendMessage(connection, bitfieldMessage.serialize(), "bitfield", fmt.Sprintf("[%s] Sent bitfield message with bitfield %08b", conn.RemoteAddr(), bitfield))
 	}
 
-	// Initialize a queue to store unfulfilled requests
-	var requestQueue []*Request
-
-	go handleRequestMessages(connection, &requestQueue)
+	go handleRequestMessages(connection)
 
 	// Loop indefinitely
 	for {
@@ -456,7 +454,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				}
 
 				// Iterate across the request queue
-				for i, request := range requestQueue {
+				for i, request := range connection.requestQueue {
 
 					// Check if a request was sent for block and the block has not been received
 					if request.index == message.index && request.begin == message.begin && request.length == uint32(len(message.block)) && !pieces[message.index].blocks[(int64(message.begin) / maxBlockSize)].isReceived {
@@ -488,7 +486,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 								pieces[message.index].isComplete = true
 								numPiecesCompleted++
 
-								fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", message.index, len(connections), float64(numPiecesCompleted)/float64(numPieces) * 100)
+								fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", message.index, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
 							} else {
 								// Revert the blocks of the piece
 								for _, block := range pieces[message.index].blocks {
@@ -505,7 +503,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 						}
 						
 						// Remove the request from the queue
-						requestQueue = append(requestQueue[:i], requestQueue[i + 1:]...)
+						connection.requestQueue = append(connection.requestQueue[:i], connection.requestQueue[i + 1:]...)
 					}
 				}
 
@@ -521,7 +519,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 }
 
 // Sends request messages.
-func handleRequestMessages(connection *Connection, requestQueue *[]*Request) {
+func handleRequestMessages(connection *Connection) {
 
 	// Loop until all pieces have been completed
 	for numPiecesCompleted < numPieces {
@@ -558,13 +556,13 @@ func handleRequestMessages(connection *Connection, requestQueue *[]*Request) {
 				request := newRequest(pieceIndex, uint32(blockIndex) * uint32(maxBlockSize), uint32(block.length))
 
 				// Wait while the request queue is full
-				for len(*requestQueue) >= maxRequestQueueSize {}
+				for len(connection.requestQueue) >= maxRequestQueueSize {}
 
 				// Check if the request is not already in the queue
-				if !contains(*requestQueue, request) {
+				if !contains(connection.requestQueue, request) {
 
 					// Add the request to the queue
-					*requestQueue = append(*requestQueue, request)
+					connection.requestQueue = append(connection.requestQueue, request)
 					
 					// Serialize and send the request message
 					requestMessage := newRequestOrCancelMessage(messageIDRequest, pieceIndex, uint32(blockIndex))
