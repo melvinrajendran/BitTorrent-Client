@@ -23,7 +23,7 @@ import (
  */
 
 // Maximum number of unfulfilled requests to queue
-const requestQueueSize = 10
+const maxRequestQueueSize = 10
 
 // Stores an unfulfilled request
 type Request struct {
@@ -190,6 +190,14 @@ func attemptFormingConnection(peerAddrPort string, peerID string) {
 		}
 
 		break
+	}
+
+	// Remove the peer's address-port pair from the list of attempted connections
+	for i, attemptedConnection := range attemptedConnections {
+		if attemptedConnection == peerAddrPort {
+			attemptedConnections = append(attemptedConnections[:i], attemptedConnections[i + 1:]...)
+			break
+		}
 	}
 }
 
@@ -451,11 +459,11 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				for i, request := range requestQueue {
 
 					// Check if a request was sent for block and the block has not been received
-					if request.index == message.index && request.begin == message.begin && request.length == uint32(len(message.block)) && !pieces[message.index].blocks[(int64(message.begin) / blockSize)].isReceived {
+					if request.index == message.index && request.begin == message.begin && request.length == uint32(len(message.block)) && !pieces[message.index].blocks[(int64(message.begin) / maxBlockSize)].isReceived {
 
 						// Update the block in the corresponding piece
-						pieces[message.index].blocks[(int64(message.begin) / blockSize)].isReceived = true
-						pieces[message.index].blocks[(int64(message.begin) / blockSize)].data = message.block
+						pieces[message.index].blocks[(int64(message.begin) / maxBlockSize)].isReceived = true
+						pieces[message.index].blocks[(int64(message.begin) / maxBlockSize)].data = message.block
 
 						// Update the corresponding piece
 						pieces[message.index].numBlocksReceived++
@@ -480,7 +488,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 								pieces[message.index].isComplete = true
 								numPiecesCompleted++
 
-								fmt.Printf("[CLIENT] Completed %d/%d pieces\n", numPiecesCompleted, numPieces)
+								fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", message.index, len(connections), float64(numPiecesCompleted)/float64(numPieces) * 100)
 							} else {
 								// Revert the blocks of the piece
 								for _, block := range pieces[message.index].blocks {
@@ -489,6 +497,10 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 								// Revert the piece
 								pieces[message.index].numBlocksReceived = 0
+
+								if verbose {
+									fmt.Println("[CLIENT] Failed to validate hash of piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d", message.index)
+								}
 							}
 						}
 						
@@ -543,20 +555,20 @@ func handleRequestMessages(connection *Connection, requestQueue *[]*Request) {
 				}
 
 				// Initialize a new request
-				request := newRequest(pieceIndex, uint32(blockIndex) * uint32(blockSize), uint32(block.length))
+				request := newRequest(pieceIndex, uint32(blockIndex) * uint32(maxBlockSize), uint32(block.length))
+
+				// Wait while the request queue is full
+				for len(*requestQueue) >= maxRequestQueueSize {}
 
 				// Check if the request is not already in the queue
 				if !contains(*requestQueue, request) {
-
-					// Wait while the request queue is full
-					for len(*requestQueue) >= requestQueueSize {}
 
 					// Add the request to the queue
 					*requestQueue = append(*requestQueue, request)
 					
 					// Serialize and send the request message
 					requestMessage := newRequestOrCancelMessage(messageIDRequest, pieceIndex, uint32(blockIndex))
-					sendMessage(connection, requestMessage.serialize(), "request", fmt.Sprintf("[%s] Sent request message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), pieceIndex, int64(blockIndex) * blockSize, block.length))
+					sendMessage(connection, requestMessage.serialize(), "request", fmt.Sprintf("[%s] Sent request message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), pieceIndex, int64(blockIndex) * maxBlockSize, block.length))
 				}
 			}
 		}
@@ -661,5 +673,5 @@ func handleDownloadingFile() {
 		}
 	}
 
-	fmt.Printf("[CLIENT] Successfully downloaded the file in %v seconds!", time.Since(startTime).Seconds())
+	fmt.Printf("[CLIENT] Successfully downloaded the file \"%s\" in %v seconds!\n", fileName, time.Since(startTime).Seconds())
 }

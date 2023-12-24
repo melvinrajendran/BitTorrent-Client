@@ -240,7 +240,7 @@ type RequestOrCancelMessage struct {
 func newRequestOrCancelMessage(id byte, index uint32, blockIndex uint32) *RequestOrCancelMessage {
 
 	// Serialize and send Request message for a block of the target piece
-	begin := uint32(int64(blockIndex) * blockSize)
+	begin := uint32(int64(blockIndex) * maxBlockSize)
 	length := uint32(pieces[index].blocks[blockIndex].length)
 
 	return &RequestOrCancelMessage {

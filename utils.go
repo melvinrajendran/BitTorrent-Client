@@ -34,16 +34,16 @@ func getSHA1Hash(bytes []byte) []byte {
 
 	// Initialize SHA1, the block size, total number of bytes to hash, and number of blocks
 	sha1 := sha1.New()
-	blockSize := 64
+	maxBlockSize := 64
 	totalBytes := len(bytes)
-	numBlocks := (totalBytes + blockSize - 1) / blockSize
+	numBlocks := (totalBytes + maxBlockSize - 1) / maxBlockSize
 
 	// Iterate across the blocks of the byte array
 	for i := 0; i < numBlocks; i++ {
 
 		// Compute the start and end bytes of the current block
-		start := i * blockSize
-		end := (i + 1) * blockSize
+		start := i * maxBlockSize
+		end := (i + 1) * maxBlockSize
 		if end > totalBytes {
 			end = totalBytes
 		}

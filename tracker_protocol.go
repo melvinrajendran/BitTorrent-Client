@@ -278,7 +278,7 @@ func printTrackerResponse(trackerResponse map[string]interface{}) {
 			peers := trackerResponse["peers"].([]interface{})
 			for i, peer := range peers {
 				p := peer.(map[string]interface{})
-				fmt.Printf("\tPeer %v:\tIP: %v\tPort: %v\n", i, p["ip"], p["port"])
+				fmt.Printf("\tPeer %2v:\tIP: %-15v\tPort: %-5v\n", i, p["ip"], p["port"])
 			}
 		} else {
 			fmt.Printf("Key: %v, Value: %v\n", key, value)

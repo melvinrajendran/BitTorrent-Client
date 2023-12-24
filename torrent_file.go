@@ -14,7 +14,7 @@ import (
 )
 
 // Block size
-const blockSize int64 = 16384
+const maxBlockSize int64 = 16384
 
 // 20-byte SHA1 hash of the encoded info dictionary
 var infoHash []byte
@@ -54,15 +54,15 @@ type Piece struct {
 func newPiece(length int64) *Piece {
 
 	// Compute the number of blocks and the last block's length, which may be irregular
-	numBlocks := int64(math.Ceil(float64(length) / float64(blockSize)))
-	lastBlockLen := length - (int64(numBlocks) - 1) * blockSize
+	numBlocks := int64(math.Ceil(float64(length) / float64(maxBlockSize)))
+	lastBlockSize := length - (int64(numBlocks) - 1) * maxBlockSize
 
 	// Initialize the blocks of the new Piece
 	blocks := make([]Block, numBlocks)
 	for i := int64(0); i < numBlocks; i++ {
-		blockLen := blockSize
+		blockLen := maxBlockSize
 		if i == numBlocks - 1 {
-			blockLen = lastBlockLen
+			blockLen = lastBlockSize
 		}
 
 		blocks[i] = Block {
