@@ -27,7 +27,7 @@ var pieceHashes [][]byte
 // Array of pieces to be aggregated into a file
 var pieces []*Piece
 // Number of pieces completed
-var numPiecesCompleted = 0
+var numPiecesCompleted int64 = 0
 // File name
 var fileName string
 // File length
@@ -39,12 +39,12 @@ var announce string
 type Block struct {
 	isReceived bool
 	length     int64
+	data       []byte
 }
 
 // Stores the status and data of a piece in the file
 type Piece struct {
 	blocks            []Block
-	data              []byte
 	isComplete        bool
 	numBlocks         int64
 	numBlocksReceived int64
@@ -67,6 +67,7 @@ func newPiece(length int64) *Piece {
 
 		blocks[i] = Block {
 			isReceived: false,
+			data:       make([]byte, blockLen),
 			length:     blockLen,
 		}
 	}
@@ -75,7 +76,6 @@ func newPiece(length int64) *Piece {
 	return &Piece {
 		isComplete:        false,
 		blocks:            blocks,
-		data:              make([]byte, length),
 		numBlocks:         numBlocks,
 		numBlocksReceived: 0,
 	}

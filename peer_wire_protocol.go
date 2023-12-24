@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -16,9 +17,44 @@ import (
 )
 
 /*
- * TODO:
- * DESIGN PIECE DOWNLOADING STRAT
+ * TODO
+ * Update request queue, store in connection?
  */
+
+// Maximum number of unfulfilled requests to queue
+const requestQueueSize = 10
+
+// Stores an unfulfilled request
+type Request struct {
+	index    uint32
+	begin    uint32
+	length   uint32
+	sentTime time.Time
+}
+
+func newRequest(index uint32, begin uint32, length uint32) *Request {
+	return &Request {
+		index: index,
+		begin: begin,
+		length: length,
+		sentTime: time.Now(),
+	}
+}
+
+// Returns true if the parameter request queue contains the parameter request, or false otherwise.
+func contains(requestQueue []*Request, request *Request) bool {
+	
+	// Iterate across the request queue
+	for _, r := range requestQueue {
+
+		// Check if the request is in the queue
+		if r.index == request.index && r.begin == request.begin && r.length == request.length {
+			return true
+		}
+	}
+
+	return false
+}
 
 // Bitfield of the client
 var bitfield []byte
@@ -227,6 +263,11 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 		sendMessage(connection, bitfieldMessage.serialize(), "bitfield", fmt.Sprintf("[%s] Sent bitfield message with bitfield %08b", conn.RemoteAddr(), bitfield))
 	}
 
+	// Initialize a queue to store unfulfilled requests
+	var requestQueue []*Request
+
+	go handleRequestMessages(connection, &requestQueue)
+
 	// Loop indefinitely
 	for {
 
@@ -321,7 +362,9 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				}
 
 				// Update the peer's bitfield
-				connection.bitfield[message.pieceIndex] = 1
+				byteIndex := message.pieceIndex / 8
+				bitOffset := 7 - uint(message.pieceIndex % 8)
+				connection.bitfield[byteIndex] |= (1 << bitOffset)
 
 				// Check if the peer has a piece that the client does not and the client is not interested in the peer
 				if bitfield[message.pieceIndex] == 0 && !connection.amInterested {
@@ -398,8 +441,59 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 			case PieceMessage:
 				if verbose {
-					fmt.Printf("[%s] Received request message with index %d and begin %d\n", conn.RemoteAddr(), message.index, message.begin)
+					fmt.Printf("[%s] Received piece message with index %d and begin %d\n", conn.RemoteAddr(), message.index, message.begin)
 				}
+
+				// Iterate across the request queue
+				for i, request := range requestQueue {
+
+					// Check if a request was sent for block and the block has not been received
+					if request.index == message.index && request.begin == message.begin && request.length == uint32(len(message.block)) && !pieces[message.index].blocks[(int64(message.begin) / blockSize)].isReceived {
+						
+						// Update the block in the corresponding piece
+						pieces[message.index].blocks[(int64(message.begin) / blockSize)].isReceived = true
+						pieces[message.index].blocks[(int64(message.begin) / blockSize)].data = message.block
+
+						// Update the corresponding piece
+						pieces[message.index].numBlocksReceived++
+
+						// Check if all blocks have been received
+						if pieces[message.index].numBlocksReceived == pieces[message.index].numBlocks {
+
+							// Get the correct hash of the piece
+							correctHash := pieceHashes[message.index]
+
+							// Compute the hash of the received piece
+							buffer := new(bytes.Buffer)
+							for _, block := range pieces[message.index].blocks {
+								buffer.Write(block.data)
+							}
+							pieceHash := getSHA1Hash(buffer.Bytes())
+
+							// Check if the hashes are equal
+							if bytes.Equal(pieceHash, correctHash) {
+
+								// The piece has been completed
+								pieces[message.index].isComplete = true
+								numPiecesCompleted++
+
+								fmt.Printf("[CLIENT] Completed %d/%d pieces\n", numPiecesCompleted, numPieces)
+							} else {
+								// Revert the blocks of the piece
+								for _, block := range pieces[message.index].blocks {
+									block.isReceived = false
+								}
+
+								// Revert the piece
+								pieces[message.index].numBlocksReceived = 0
+							}
+						}
+						
+						// Remove the request from the queue
+						requestQueue = append(requestQueue[:i], requestQueue[i + 1:]...)
+					}
+				}
+
 				break
 
 			default:
@@ -407,6 +501,61 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 					fmt.Printf("[%s] Received invalid message type\n", conn.RemoteAddr())
 				}
 				return
+		}
+	}
+}
+
+// Sends request messages.
+func handleRequestMessages(connection *Connection, requestQueue *[]*Request) {
+
+	// Loop until all pieces have been completed
+	for numPiecesCompleted < numPieces {
+
+		// Check if the client is unchoked by the peer
+		if !connection.peerChoking {
+
+			// Select a random piece
+			pieceIndex := uint32(rand.Intn(int(numPieces)))
+
+			// If the piece is complete, continue
+			if pieces[pieceIndex].isComplete {
+				continue
+			}
+
+			// Compute the byte index and bit offset of the piece in the peer's bitfield
+			byteIndex := pieceIndex / 8
+			bitOffset := 7 - uint(pieceIndex % 8)
+
+			// If the peer does not have the piece, continue
+			if connection.bitfield[byteIndex] & (1 << bitOffset) == 0 {
+				continue
+			}
+
+			// Iterate across the blocks in the piece
+			for blockIndex, block := range pieces[pieceIndex].blocks {
+
+				// If the block has been received, continue
+				if block.isReceived {
+					continue
+				}
+
+				// Initialize a new request
+				request := newRequest(pieceIndex, uint32(blockIndex) * uint32(blockSize), uint32(block.length))
+
+				// Check if the request is not already in the queue
+				if !contains(*requestQueue, request) {
+
+					// Wait while the request queue is full
+					for len(*requestQueue) >= requestQueueSize {}
+
+					// Add the request to the queue
+					*requestQueue = append(*requestQueue, request)
+					
+					// Serialize and send the request message
+					requestMessage := newRequestOrCancelMessage(messageIDRequest, pieceIndex, uint32(blockIndex))
+					sendMessage(connection, requestMessage.serialize(), "request", fmt.Sprintf("[%s] Sent request message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), pieceIndex, int64(blockIndex) * blockSize, block.length))
+				}
+			}
 		}
 	}
 }
