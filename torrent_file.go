@@ -171,7 +171,9 @@ func printTorrentFile(torrentFile map[string]interface{}) {
 			fmt.Println("Info Dictionary:")
 			info := torrentFile["info"].(map[string]interface{})
 			for key, value := range info {
-				fmt.Printf("\tKey: %v, Value: %v\n", key, value)
+				if key != "pieces" {
+					fmt.Printf("\tKey: %v, Value: %v\n", key, value)
+				}
 			}
 		} else {
 			fmt.Printf("Key: %v, Value: %v\n", key, value)

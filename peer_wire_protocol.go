@@ -11,6 +11,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +63,8 @@ var bitfield []byte
 var connections []*Connection
 // Array of address-port pairs of connections that the client attempted to form with remote peers
 var attemptedConnections []string
+// Start time of the download
+var startTime time.Time
 
 // Stores the state of a connection that the client has with a remote peer
 type Connection struct {
@@ -367,7 +370,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				connection.bitfield[byteIndex] |= (1 << bitOffset)
 
 				// Check if the peer has a piece that the client does not and the client is not interested in the peer
-				if bitfield[message.pieceIndex] == 0 && !connection.amInterested {
+				if (bitfield[byteIndex] & (1 << bitOffset)) == 0 && !connection.amInterested {
 
 					// The client became interested in the peer
 					connection.amInterested = true
@@ -449,7 +452,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 					// Check if a request was sent for block and the block has not been received
 					if request.index == message.index && request.begin == message.begin && request.length == uint32(len(message.block)) && !pieces[message.index].blocks[(int64(message.begin) / blockSize)].isReceived {
-						
+
 						// Update the block in the corresponding piece
 						pieces[message.index].blocks[(int64(message.begin) / blockSize)].isReceived = true
 						pieces[message.index].blocks[(int64(message.begin) / blockSize)].data = message.block
@@ -566,18 +569,19 @@ func handleKeepAliveMessages() {
 	// Loop indefinitely
 	for {
 
-		// Get the current time
-		currentTime := time.Now()
+		// Check if there is at least 1 connection
+		if connections != nil && len(connections) >= 1 {
 
-		// Iterate across the peer connections
-		for _, connection := range connections {
+			// Iterate across the peer connections
+			for _, connection := range connections {
 
-			// Check if at least 1 minute has passed since the client sent a message
-			if currentTime.Sub(connection.lastSentTime) >= 1 * time.Minute {
+				// Check if at least 1 minute has passed since the client sent a message
+				if time.Since(connection.lastSentTime) >= 1 * time.Minute {
 
-				// Serialize and send keep-alive message
-				keepAliveMessage := newKeepAliveMessage()
-				sendMessage(connection, keepAliveMessage.serialize(), "keep-alive", fmt.Sprintf("[%s] Sent keep-alive message", connection.conn.RemoteAddr()))
+					// Serialize and send keep-alive message
+					keepAliveMessage := newKeepAliveMessage()
+					sendMessage(connection, keepAliveMessage.serialize(), "keep-alive", fmt.Sprintf("[%s] Sent keep-alive message", connection.conn.RemoteAddr()))
+				}
 			}
 		}
 	}
@@ -608,20 +612,54 @@ func handleTimeouts() {
 	// Loop indefinitely
 	for {
 
-		// Get the current time
-		currentTime := time.Now()
+		// Check if there is at least 1 connection
+		if connections != nil && len(connections) >= 1 {
 
-		// Iterate across the peer connections
-		for _, connection := range connections {
+			// Iterate across the peer connections
+			for _, connection := range connections {
 
-			// Check if at least 2 minutes have passed since the client received a message
-			if currentTime.Sub(connection.lastReceivedTime) >= 2 * time.Minute {
+				// Check if at least 2 minutes have passed since the client received a message
+				if time.Since(connection.lastReceivedTime) >= 2 * time.Minute {
 
-				// Close the connection
-				closeConnection(connection)
+					// Close the connection
+					closeConnection(connection)
 
-				break
+					break
+				}
 			}
 		}
 	}
+}
+
+// Handles downloading the file after all pieces have been completed.
+func handleDownloadingFile() {
+
+	// Loop indefinitely
+	for {
+		
+		// Check if all pieces have been completed
+		if numPiecesCompleted == numPieces {
+
+			// Create the file
+			file, err := os.Create(fileName)
+			assert(err == nil, "Error creating file")
+			defer file.Close()
+
+			// Iterate across all of the pieces
+			for _, piece := range pieces {
+				
+				// Iterate across all of the blocks of the current piece
+				for _, block := range piece.blocks {
+
+					// Write the current block to the file
+					_, err := file.Write(block.data)
+					assert(err == nil, "Error writing piece to file")
+				}
+			}
+
+			break
+		}
+	}
+
+	fmt.Printf("[CLIENT] Successfully downloaded the file in %v seconds!", time.Since(startTime).Seconds())
 }

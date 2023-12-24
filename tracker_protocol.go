@@ -97,9 +97,9 @@ func scrapeTracker() error {
 	// Print the tracker scrape response
 	fmt.Println("====================== Tracker Scrape ======================")
 	fmt.Println("Files Dictionary:")
-	for key, value := range files {
+	for _, value := range files {
 		valueMap := value.(map[string]interface{})
-		fmt.Printf("\tKey: %v, Value: {Complete: %v, Downloaded: %v, Incomplete: %v}\n", key, valueMap["complete"], valueMap["downloaded"], valueMap["incomplete"])
+		fmt.Printf("\tValue: {Complete: %v, Downloaded: %v, Incomplete: %v}\n", valueMap["complete"], valueMap["downloaded"], valueMap["incomplete"])
 	}
 	if ok {
 		fmt.Println("Flags:")
@@ -169,6 +169,11 @@ func receiveTrackerResponse(conn net.Conn) error {
 	response, err := parseTrackerResponse(buffer, false)
 	if err != nil {
 		return err
+	}
+
+	if trackerResponse == nil {
+		// Initialize the start time of the download
+		startTime = time.Now()
 	}
 
 	// Update the last tracker response received

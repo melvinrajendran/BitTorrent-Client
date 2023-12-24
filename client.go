@@ -43,6 +43,9 @@ func main() {
 	go handleKeepAliveMessages()
 	go handleTimeouts()
 
+	// Start a goroutine to download the file after all pieces have been completed
+	go handleDownloadingFile()
+
 	// Handle shutting down gracefully
 	handleShuttingDown()
 }
