@@ -17,11 +17,6 @@ import (
 	"time"
 )
 
-/*
- * TODO
- * Update request queue, store in connection?
- */
-
 // Maximum number of unfulfilled requests to queue
 const maxRequestQueueSize = 10
 
@@ -486,6 +481,18 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 								pieces[message.index].isComplete = true
 								numPiecesCompleted++
 
+								// Update the client's bitfield
+								byteIndex := message.index / 8
+								bitOffset := 7 - uint(message.index % 8)
+								bitfield[byteIndex] |= (1 << bitOffset)
+
+								// Update the number of bytes downloaded and left
+								downloaded += int64(len(buffer.Bytes()))
+								left -= int64(len(buffer.Bytes()))
+
+								// Update the number of bytes downloaded from the peer
+								connection.bytesDownloaded += int64(len(buffer.Bytes()))
+
 								fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", message.index, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
 							} else {
 								// Revert the blocks of the piece
@@ -504,6 +511,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 						
 						// Remove the request from the queue
 						connection.requestQueue = append(connection.requestQueue[:i], connection.requestQueue[i + 1:]...)
+
+						break
 					}
 				}
 
@@ -573,6 +582,31 @@ func handleRequestMessages(connection *Connection) {
 	}
 }
 
+// Removes timed-out requests from each connection's request queue.
+func handleRequestTimeouts() {
+
+	// Loop indefinitely
+	for {
+
+		// Iterate across the connections
+		for _, connection := range connections {
+
+			// Iterate across the requests in the queue of the current connection
+			for i, request := range connection.requestQueue {
+				
+				// Check if at least 5 seconds have passed since the current request was sent
+				if time.Since(request.sentTime) >= 5 * time.Second {
+
+					// Remove the request from the queue
+					connection.requestQueue = append(connection.requestQueue[:i], connection.requestQueue[i + 1:]...)
+
+					break
+				}
+			}
+		}
+	}
+}
+
 // Sends keep-alive messages periodically.
 func handleKeepAliveMessages() {
 
@@ -617,7 +651,7 @@ func closeConnection(connection *Connection) {
 }
 
 // Handles timed-out connections by closing them.
-func handleTimeouts() {
+func handleConnectionTimeouts() {
 
 	// Loop indefinitely
 	for {

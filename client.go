@@ -39,9 +39,12 @@ func main() {
 	go handleFormingConnections()
 	go handleIncomingConnections()
 
+	// Start a goroutine to remove timed-out requests from each connection's request queue
+	go handleRequestTimeouts()
+
 	// Start goroutine to periodically send keep-alive messages and close timed-out connections, respectively
 	go handleKeepAliveMessages()
-	go handleTimeouts()
+	go handleConnectionTimeouts()
 
 	// Start a goroutine to download the file after all pieces have been completed
 	go handleDownloadingFile()
