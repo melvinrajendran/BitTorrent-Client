@@ -39,7 +39,7 @@ func newRequest(index uint32, begin uint32, length uint32) *Request {
 
 // Returns true if the parameter request queue contains the parameter request, or false otherwise.
 func contains(requestQueue []*Request, request *Request) bool {
-	
+
 	// Iterate across the request queue
 	for _, r := range requestQueue {
 
@@ -87,6 +87,7 @@ func newConnection(conn net.Conn) *Connection {
 		bitfield:         make([]byte, numPieces),
 		bytesDownloaded:  0,
 		bytesUploaded:    0,
+		requestQueue:     make([]*Request, 0),
 		startTime:        time.Now(),
 		lastSentTime:     time.Now(),
 		lastReceivedTime: time.Now(),
@@ -267,7 +268,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 		// Serialize and send the bitfield message
 		bitfieldMessage := newBitfieldMessage()
-		sendMessage(connection, bitfieldMessage.serialize(), "bitfield", fmt.Sprintf("[%s] Sent bitfield message with bitfield %08b", conn.RemoteAddr(), bitfield))
+		sendMessage(connection, bitfieldMessage.serialize(), "bitfield", fmt.Sprintf("[%s] Sent bitfield message", conn.RemoteAddr()))
 	}
 
 	go handleRequestMessages(connection)
@@ -385,7 +386,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 			case BitfieldMessage:
 				if verbose {
-					fmt.Printf("[%s] Received bitfield message with bitfield %08b\n", conn.RemoteAddr(), message.bitfield)
+					fmt.Printf("[%s] Received bitfield message\n", conn.RemoteAddr())
 				}
 
 				// Update the peer's bitfield
@@ -588,19 +589,27 @@ func handleRequestTimeouts() {
 	// Loop indefinitely
 	for {
 
-		// Iterate across the connections
-		for _, connection := range connections {
+		// Check if there is at least 1 connection
+		if connections != nil && len(connections) >= 1 {
 
-			// Iterate across the requests in the queue of the current connection
-			for i, request := range connection.requestQueue {
-				
-				// Check if at least 5 seconds have passed since the current request was sent
-				if time.Since(request.sentTime) >= 5 * time.Second {
+			// Iterate across the connections
+			for _, connection := range connections {
 
-					// Remove the request from the queue
-					connection.requestQueue = append(connection.requestQueue[:i], connection.requestQueue[i + 1:]...)
+				// Check if there is at least 1 request in the queue
+				if connection.requestQueue != nil && len(connection.requestQueue) >= 1 {
 
-					break
+					// Iterate across the requests in the queue of the current connection
+					for i, request := range connection.requestQueue {
+								
+						// Check if at least 5 seconds have passed since the current request was sent
+						if time.Since(request.sentTime) >= 5 * time.Second {
+
+							// Remove the request from the queue
+							connection.requestQueue = append(connection.requestQueue[:i], connection.requestQueue[i + 1:]...)
+
+							break
+						}
+					}
 				}
 			}
 		}
