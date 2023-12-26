@@ -30,9 +30,9 @@ type Request struct {
 
 func newRequest(index uint32, begin uint32, length uint32) *Request {
 	return &Request {
-		index: index,
-		begin: begin,
-		length: length,
+		index:    index,
+		begin:    begin,
+		length:   length,
 		sentTime: time.Now(),
 	}
 }
@@ -55,7 +55,7 @@ func contains(requestQueue []*Request, request *Request) bool {
 // Bitfield of the client
 var bitfield []byte
 // Array of connections that the client has with remote peers
-var connections []*Connection
+var connections = make([]*Connection, 0)
 // Array of address-port pairs of connections that the client attempted to form with remote peers
 var attemptedConnections []string
 // Start time of the download
@@ -450,7 +450,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				}
 
 				// Iterate across the request queue
-				for i, request := range connection.requestQueue {
+				for _, request := range connection.requestQueue {
 
 					// Check if a request was sent for block and the block has not been received
 					if request.index == message.index && request.begin == message.begin && request.length == uint32(len(message.block)) && !pieces[message.index].blocks[(int64(message.begin) / maxBlockSize)].isReceived {
@@ -494,7 +494,14 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 								// Update the number of bytes downloaded from the peer
 								connection.bytesDownloaded += int64(len(buffer.Bytes()))
 
-								fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", message.index, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
+								if !verbose {
+									fmt.Printf("\r[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)", message.index, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
+									if numPiecesCompleted == numPieces {
+										fmt.Println()
+									}
+								} else {
+									fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", message.index, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
+								}
 							} else {
 								// Revert the blocks of the piece
 								for _, block := range pieces[message.index].blocks {
@@ -511,7 +518,14 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 						}
 						
 						// Remove the request from the queue
-						connection.requestQueue = append(connection.requestQueue[:i], connection.requestQueue[i + 1:]...)
+						for j, r := range connection.requestQueue {
+
+							// Check if the request is in the queue
+							if r.index == message.index && r.begin == message.begin && r.length == uint32(len(message.block)) {
+								connection.requestQueue = append(connection.requestQueue[:j], connection.requestQueue[j + 1:]...)
+								break
+							}
+						}
 
 						break
 					}
@@ -589,27 +603,19 @@ func handleRequestTimeouts() {
 	// Loop indefinitely
 	for {
 
-		// Check if there is at least 1 connection
-		if connections != nil && len(connections) >= 1 {
+		// Iterate across the connections
+		for _, connection := range connections {
 
-			// Iterate across the connections
-			for _, connection := range connections {
+			// Iterate across the requests in the queue of the current connection
+			for i, request := range connection.requestQueue {
+									
+				// Check if at least 5 seconds have passed since the current request was sent
+				if time.Since(request.sentTime) >= 5 * time.Second {
 
-				// Check if there is at least 1 request in the queue
-				if connection.requestQueue != nil && len(connection.requestQueue) >= 1 {
+					// Remove the request from the queue
+					connection.requestQueue = append(connection.requestQueue[:i], connection.requestQueue[i + 1:]...)
 
-					// Iterate across the requests in the queue of the current connection
-					for i, request := range connection.requestQueue {
-								
-						// Check if at least 5 seconds have passed since the current request was sent
-						if time.Since(request.sentTime) >= 5 * time.Second {
-
-							// Remove the request from the queue
-							connection.requestQueue = append(connection.requestQueue[:i], connection.requestQueue[i + 1:]...)
-
-							break
-						}
-					}
+					break
 				}
 			}
 		}
@@ -622,19 +628,15 @@ func handleKeepAliveMessages() {
 	// Loop indefinitely
 	for {
 
-		// Check if there is at least 1 connection
-		if connections != nil && len(connections) >= 1 {
+		// Iterate across the peer connections
+		for _, connection := range connections {
 
-			// Iterate across the peer connections
-			for _, connection := range connections {
+			// Check if at least 1 minute has passed since the client sent a message
+			if time.Since(connection.lastSentTime) >= 1 * time.Minute {
 
-				// Check if at least 1 minute has passed since the client sent a message
-				if time.Since(connection.lastSentTime) >= 1 * time.Minute {
-
-					// Serialize and send keep-alive message
-					keepAliveMessage := newKeepAliveMessage()
-					sendMessage(connection, keepAliveMessage.serialize(), "keep-alive", fmt.Sprintf("[%s] Sent keep-alive message", connection.conn.RemoteAddr()))
-				}
+				// Serialize and send keep-alive message
+				keepAliveMessage := newKeepAliveMessage()
+				sendMessage(connection, keepAliveMessage.serialize(), "keep-alive", fmt.Sprintf("[%s] Sent keep-alive message", connection.conn.RemoteAddr()))
 			}
 		}
 	}
@@ -665,20 +667,16 @@ func handleConnectionTimeouts() {
 	// Loop indefinitely
 	for {
 
-		// Check if there is at least 1 connection
-		if connections != nil && len(connections) >= 1 {
+		// Iterate across the peer connections
+		for _, connection := range connections {
 
-			// Iterate across the peer connections
-			for _, connection := range connections {
+			// Check if at least 2 minutes have passed since the client received a message
+			if time.Since(connection.lastReceivedTime) >= 2 * time.Minute {
 
-				// Check if at least 2 minutes have passed since the client received a message
-				if time.Since(connection.lastReceivedTime) >= 2 * time.Minute {
+				// Close the connection
+				closeConnection(connection)
 
-					// Close the connection
-					closeConnection(connection)
-
-					break
-				}
+				break
 			}
 		}
 	}

@@ -179,7 +179,4 @@ func printTorrentFile(torrentFile map[string]interface{}) {
 			fmt.Printf("Key: %v, Value: %v\n", key, value)
 		}
 	}
-	if !verbose {
-		fmt.Println("===================== Transfer Details =====================")
-	}
 }

@@ -179,10 +179,8 @@ func receiveTrackerResponse(conn net.Conn) error {
 	// Update the last tracker response received
 	trackerResponse = response
 
-	if verbose {
-		// Print the tracker response
-		printTrackerResponse(trackerResponse)
-	}
+	// Print the tracker response
+	printTrackerResponse(trackerResponse)
 
 	return err
 }
@@ -290,10 +288,8 @@ func printTrackerResponse(trackerResponse map[string]interface{}) {
 // Sends tracker requests on an interval.
 func handleTrackerRequests() {
 
-	if verbose {
-		// Send, receive, and print a tracker scrape
-		scrapeTracker()
-	}
+	// Send, receive, and print a tracker scrape
+	scrapeTracker()
 
 	// Initialize the number of bytes that the client has to download
 	left = fileLength
