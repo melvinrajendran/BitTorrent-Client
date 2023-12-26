@@ -29,6 +29,26 @@ func assert(condition bool, message string) {
 	}
 }
 
+// Formats the parameter number of bytes as a string.
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
 // Returns the SHA1 hash of the parameter byte array.
 func getSHA1Hash(bytes []byte) []byte {
 
@@ -67,7 +87,7 @@ func parseFlags() {
 	var p int
 	flag.BoolVar(&compact, "compact", false, "Indicates that the client accepts a compact response")
 	flag.IntVar(&p, "port", 6881, "Port that the client will bind to and listen on")
-	flag.StringVar(&tfp, "torrent", "artofwar.torrent", "Path to the torrent file that contains metadata about the file to be distributed")
+	flag.StringVar(&tfp, "torrent", "debian-12.4.0-amd64-netinst.iso.torrent", "Path to the torrent file that contains metadata about the file to be distributed")
 	flag.BoolVar(&verbose, "verbose", false, "Indicates that the client prints detailed logs")
 
 	// Parse the flags

@@ -99,13 +99,10 @@ func scrapeTracker() error {
 	fmt.Println("Files Dictionary:")
 	for _, value := range files {
 		valueMap := value.(map[string]interface{})
-		fmt.Printf("\tValue: {Complete: %v, Downloaded: %v, Incomplete: %v}\n", valueMap["complete"], valueMap["downloaded"], valueMap["incomplete"])
+		fmt.Printf("\tComplete: %v\n\tDownloaded: %v\n\tIncomplete: %v\n", valueMap["complete"], valueMap["downloaded"], valueMap["incomplete"])
 	}
 	if ok {
-		fmt.Println("Flags:")
-		for key, value := range flags {
-			fmt.Printf("\tKey: %v, Value: %v\n", key, value)
-		}
+		fmt.Printf("Flags:\n\tMin Request Interval: %v s\n", flags["min_request_interval"].(int64))
 	}
 
 	return nil
@@ -179,8 +176,10 @@ func receiveTrackerResponse(conn net.Conn) error {
 	// Update the last tracker response received
 	trackerResponse = response
 
-	// Print the tracker response
-	printTrackerResponse(trackerResponse)
+	if verbose {
+		// Print the tracker response
+		printTrackerResponse()
+	}
 
 	return err
 }
@@ -268,19 +267,14 @@ func parseTrackerResponse(buffer *bytes.Buffer, isScrape bool) (map[string]inter
 }
 
 // Prints the parameter tracker response.
-func printTrackerResponse(trackerResponse map[string]interface{}) {
+func printTrackerResponse() {
 	fmt.Println("===================== Tracker Response =====================")
-	for key, value := range trackerResponse {
-		if key == "peers" {
-			fmt.Println("Peer Dictionary:")
-			peers := trackerResponse["peers"].([]interface{})
-			for i, peer := range peers {
-				p := peer.(map[string]interface{})
-				fmt.Printf("\tPeer %2v:\tIP: %-15v\tPort: %-5v\n", i, p["ip"], p["port"])
-			}
-		} else {
-			fmt.Printf("Key: %v, Value: %v\n", key, value)
-		}
+	fmt.Printf("Interval: %v s\n", trackerResponse["interval"].(int64))
+	fmt.Println("Peer Dictionary:")
+	peers := trackerResponse["peers"].([]interface{})
+	for i, peer := range peers {
+		p := peer.(map[string]interface{})
+		fmt.Printf("\tPeer %2v:\tIP: %-15v\tPort: %-5v\n", i, p["ip"], p["port"])
 	}
 	fmt.Println("===================== Transfer Details =====================")
 }
@@ -288,8 +282,10 @@ func printTrackerResponse(trackerResponse map[string]interface{}) {
 // Sends tracker requests on an interval.
 func handleTrackerRequests() {
 
-	// Send, receive, and print a tracker scrape
-	scrapeTracker()
+	if verbose {
+		// Send, receive, and print a tracker scrape
+		scrapeTracker()
+	}
 
 	// Initialize the number of bytes that the client has to download
 	left = fileLength

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"time"
 
 	"github.com/marksamman/bencode"
 )
@@ -166,17 +167,11 @@ func parseTorrentFile(torrentFile *os.File) error {
 // Prints the contents of the parameter torrent file.
 func printTorrentFile(torrentFile map[string]interface{}) {
 	fmt.Println("======================= Torrent File =======================")
-	for key, value := range torrentFile {
-		if key == "info" {
-			fmt.Println("Info Dictionary:")
-			info := torrentFile["info"].(map[string]interface{})
-			for key, value := range info {
-				if key != "pieces" {
-					fmt.Printf("\tKey: %v, Value: %v\n", key, value)
-				}
-			}
-		} else {
-			fmt.Printf("Key: %v, Value: %v\n", key, value)
-		}
+	creationDate := time.Unix(torrentFile["creation date"].(int64), 0)
+	fmt.Printf("Announce: %v\nComment: %v\nCreated By: %v\nCreation Date: %v\n", torrentFile["announce"], torrentFile["comment"], torrentFile["created by"], creationDate)
+	info := torrentFile["info"].(map[string]interface{})
+	fmt.Printf("Info Dictionary:\n\tLength: %v\n\tName: %v\n\tPiece Length: %v\n", formatBytes(info["length"].(int64)), info["name"], formatBytes(info["piece length"].(int64)))
+	if !verbose {
+		fmt.Println("===================== Transfer Details =====================")
 	}
 }

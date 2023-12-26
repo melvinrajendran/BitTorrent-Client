@@ -495,7 +495,7 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 								connection.bytesDownloaded += int64(len(buffer.Bytes()))
 
 								if !verbose {
-									fmt.Printf("\r[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)", message.index, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
+									fmt.Printf("\r[CLIENT] Downloading from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)", len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
 									if numPiecesCompleted == numPieces {
 										fmt.Println()
 									}
