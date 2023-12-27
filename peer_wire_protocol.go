@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net"
 	"os"
@@ -87,7 +88,7 @@ func newConnection(conn net.Conn) *Connection {
 		amInterested:     false,
 		peerChoking:      true,
 		peerInterested:   false,
-		bitfield:         make([]byte, numPieces),
+		bitfield:         make([]byte, int64(math.Ceil(float64(numPieces) / float64(8)))),
 		bytesDownloaded:  0,
 		bytesUploaded:    0,
 		requestQueue:     make([]*Request, 0),
@@ -376,16 +377,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				bitOffset := 7 - uint(message.pieceIndex % 8)
 				connection.bitfield[byteIndex] |= (1 << bitOffset)
 
-				// Check if the peer has a piece that the client does not and the client is not interested in the peer
-				if (bitfield[byteIndex] & (1 << bitOffset)) == 0 && !connection.amInterested {
-
-					// The client became interested in the peer
-					connection.amInterested = true
-
-					// Serialize and send an interested message
-					interestedMessage := newConnectionMessage(messageIDInterested)
-					sendMessage(connection, interestedMessage.serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", conn.RemoteAddr()))
-				}
+				// Compare the bitfields of the client and peer
+				compareBitfields(connection)
 
 				break
 
@@ -397,32 +390,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 				// Update the peer's bitfield
 				connection.bitfield = message.bitfield
 
-				// Iterate across the bytes in the bitfields of the client and peer
-				for i := 0; i < len(connection.bitfield); i++ {
-
-					// Iterate across the bits in the current byte
-					for j := 0; j < 8; j++ {
-
-						// Get the current bit in the bitfields of the client and peer
-						clientBit := (bitfield[i] >> uint8(j)) & 1
-						peerBit := (connection.bitfield[i] >> uint8(j)) & 1
-	
-						// Check if the peer has a piece that the client does not and the client is not interested in the peer
-						if clientBit == 0 && peerBit == 1 && !connection.amInterested {
-
-							// The client became interested in the peer
-							connection.amInterested = true
-
-							// Serialize and send an interested message
-							interestedMessage := newConnectionMessage(messageIDInterested)
-							sendMessage(connection, interestedMessage.serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", conn.RemoteAddr()))
-
-							goto sentInterested
-						}
-					}
-				}
-
-				sentInterested:
+				// Compare the bitfields of the client and peer
+				compareBitfields(connection)
 
 				break
 
@@ -492,6 +461,9 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 								bitOffset := 7 - uint(message.index % 8)
 								bitfield[byteIndex] |= (1 << bitOffset)
 
+								// Compare the bitfields of the client and peer
+								compareBitfields(connection)
+
 								// Update the number of bytes downloaded and left
 								downloaded += int64(len(buffer.Bytes()))
 								left -= int64(len(buffer.Bytes()))
@@ -547,56 +519,110 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 	}
 }
 
+// Compares the client bitfield and the parameter peer's bitfield, sending interested/not interested messages as necessary.
+func compareBitfields(connection *Connection) {
+
+	// Initialize a variable to store if the client is interested in the peer
+	amInterested := false
+
+	// Iterate across the bytes in the bitfields of the client and peer
+	for i := 0; i < len(connection.bitfield); i++ {
+
+		// Iterate across the bits in the current byte
+		for j := 0; j < 8; j++ {
+
+			// Get the current bit in the bitfields of the client and peer
+			clientBit := (bitfield[i] >> uint8(j)) & 1
+			peerBit := (connection.bitfield[i] >> uint8(j)) & 1
+
+			// Check if the peer has a piece that the client does not and the client is not interested in the peer
+			if clientBit == 0 && peerBit == 1 {
+
+				amInterested = true
+
+				goto peerHasPiece
+			}
+		}
+	}
+
+	peerHasPiece:
+
+	// Check if the client became interested in the peer
+	if !connection.amInterested && amInterested {
+
+		// Update the connection state
+		connection.amInterested = true
+
+		// Serialize and send an interested message
+		interestedMessage := newConnectionMessage(messageIDInterested)
+		sendMessage(connection, interestedMessage.serialize(), "interested", fmt.Sprintf("[%s] Sent interested message", connection.conn.RemoteAddr()))
+	
+		return
+	}
+	
+	// Check if the client became not interested in the peer
+	if connection.amInterested && !amInterested {
+
+		// Update the connection state
+		connection.amInterested = false
+
+		// Serialize and send a not interested message
+		notInterestedMessage := newConnectionMessage(messageIDNotInterested)
+		sendMessage(connection, notInterestedMessage.serialize(), "not interested", fmt.Sprintf("[%s] Sent not interested message", connection.conn.RemoteAddr()))
+	}
+}
+
 // Sends request messages.
 func handleRequestMessages(connection *Connection) {
 
 	// Loop until all pieces have been completed
 	for numPiecesCompleted < numPieces {
 
-		// Check if the client is unchoked by the peer
-		if !connection.peerChoking {
+		// If the client is choked by the peer, continue
+		if connection.peerChoking {
+			continue
+		}
 
-			// Select a random piece
-			pieceIndex := uint32(rand.Intn(int(numPieces)))
+		// Select a random piece
+		pieceIndex := uint32(rand.Intn(int(numPieces)))
 
-			// If the piece is complete, continue
-			if pieces[pieceIndex].isComplete {
+		// If the piece is complete, continue
+		if pieces[pieceIndex].isComplete {
+			continue
+		}
+
+		// Compute the byte index and bit offset of the piece in the peer's bitfield
+		byteIndex := pieceIndex / 8
+		bitOffset := 7 - uint(pieceIndex % 8)
+
+		// If the peer does not have the piece, continue
+		if connection.bitfield[byteIndex] & (1 << bitOffset) == 0 {
+			continue
+		}
+
+		// Iterate across the blocks in the piece
+		for blockIndex, block := range pieces[pieceIndex].blocks {
+
+			// If the block has been received, continue
+			if block.isReceived {
 				continue
 			}
 
-			// Compute the byte index and bit offset of the piece in the peer's bitfield
-			byteIndex := pieceIndex / 8
-			bitOffset := 7 - uint(pieceIndex % 8)
+			// Initialize a new request
+			request := newRequest(pieceIndex, uint32(blockIndex) * uint32(maxBlockSize), uint32(block.length))
 
-			// If the peer does not have the piece, continue
-			if connection.bitfield[byteIndex] & (1 << bitOffset) == 0 {
-				continue
-			}
+			// Wait while the request queue is full
+			for len(connection.requestQueue) >= maxRequestQueueSize {}
 
-			// Iterate across the blocks in the piece
-			for blockIndex, block := range pieces[pieceIndex].blocks {
+			// Check if the request is not already in the queue
+			if !contains(connection.requestQueue, request) {
 
-				// If the block has been received, continue
-				if block.isReceived {
-					continue
-				}
-
-				// Initialize a new request
-				request := newRequest(pieceIndex, uint32(blockIndex) * uint32(maxBlockSize), uint32(block.length))
-
-				// Wait while the request queue is full
-				for len(connection.requestQueue) >= maxRequestQueueSize {}
-
-				// Check if the request is not already in the queue
-				if !contains(connection.requestQueue, request) {
-
-					// Add the request to the queue
-					connection.requestQueue = append(connection.requestQueue, request)
-					
-					// Serialize and send the request message
-					requestMessage := newRequestOrCancelMessage(messageIDRequest, pieceIndex, uint32(blockIndex))
-					sendMessage(connection, requestMessage.serialize(), "request", fmt.Sprintf("[%s] Sent request message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), pieceIndex, int64(blockIndex) * maxBlockSize, block.length))
-				}
+				// Add the request to the queue
+				connection.requestQueue = append(connection.requestQueue, request)
+				
+				// Serialize and send the request message
+				requestMessage := newRequestOrCancelMessage(messageIDRequest, pieceIndex, uint32(blockIndex))
+				sendMessage(connection, requestMessage.serialize(), "request", fmt.Sprintf("[%s] Sent request message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), pieceIndex, int64(blockIndex) * maxBlockSize, block.length))
 			}
 		}
 	}

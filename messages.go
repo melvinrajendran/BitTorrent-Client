@@ -288,6 +288,9 @@ func deserializeRequestOrCancelMessage(reader io.Reader, len uint32, id byte) (R
 	if err != nil {
 		return message, err
 	}
+	if message.length > 131072 {
+		return message, errors.New("Received invalid request message length")
+	}
 
 	return message, nil
 }
