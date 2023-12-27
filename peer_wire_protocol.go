@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -58,6 +59,8 @@ var bitfield []byte
 var connections = make([]*Connection, 0)
 // Array of address-port pairs of connections that the client attempted to form with remote peers
 var attemptedConnections []string
+// Mutex for the array of connections
+var connectionsMu sync.RWMutex
 // Start time of the download
 var startTime time.Time
 
@@ -240,7 +243,9 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 	// Initialize a new connection and add it to the array
 	connection := newConnection(conn)
+	connectionsMu.Lock()
 	connections = append(connections, connection)
+	connectionsMu.Unlock()
 
 	// Serialize and send the handshake message
 	handshakeMessage := newHandshakeMessage()
@@ -603,12 +608,14 @@ func handleRequestTimeouts() {
 	// Loop indefinitely
 	for {
 
+		connectionsMu.Lock()
+
 		// Iterate across the connections
 		for _, connection := range connections {
 
 			// Iterate across the requests in the queue of the current connection
 			for i, request := range connection.requestQueue {
-									
+										
 				// Check if at least 5 seconds have passed since the current request was sent
 				if time.Since(request.sentTime) >= 5 * time.Second {
 
@@ -619,6 +626,8 @@ func handleRequestTimeouts() {
 				}
 			}
 		}
+
+		connectionsMu.Unlock()
 	}
 }
 
@@ -627,6 +636,8 @@ func handleKeepAliveMessages() {
 
 	// Loop indefinitely
 	for {
+
+		connectionsMu.RLock()
 
 		// Iterate across the peer connections
 		for _, connection := range connections {
@@ -639,6 +650,8 @@ func handleKeepAliveMessages() {
 				sendMessage(connection, keepAliveMessage.serialize(), "keep-alive", fmt.Sprintf("[%s] Sent keep-alive message", connection.conn.RemoteAddr()))
 			}
 		}
+
+		connectionsMu.RUnlock()
 	}
 }
 
@@ -667,6 +680,8 @@ func handleConnectionTimeouts() {
 	// Loop indefinitely
 	for {
 
+		connectionsMu.Lock()
+
 		// Iterate across the peer connections
 		for _, connection := range connections {
 
@@ -679,6 +694,8 @@ func handleConnectionTimeouts() {
 				break
 			}
 		}
+
+		connectionsMu.Unlock()
 	}
 }
 
