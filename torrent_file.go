@@ -38,9 +38,10 @@ var announce string
 
 // Stores the status and length of a block in a Piece
 type Block struct {
-	isReceived bool
-	length     int64
-	data       []byte
+	isRequested bool
+	isReceived  bool
+	length      int64
+	data        []byte
 }
 
 // Stores the status and data of a piece in the file
@@ -67,9 +68,10 @@ func newPiece(length int64) *Piece {
 		}
 
 		blocks[i] = Block {
-			isReceived: false,
-			data:       make([]byte, blockLen),
-			length:     blockLen,
+			isRequested: false,
+			isReceived:  false,
+			data:        make([]byte, blockLen),
+			length:      blockLen,
 		}
 	}
 

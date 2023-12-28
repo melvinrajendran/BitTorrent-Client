@@ -21,6 +21,18 @@ import (
 
 // Maximum number of unfulfilled requests to queue
 const maxRequestQueueSize = 10
+// Bitfield of the client
+var bitfield []byte
+// Array of connections that the client has with remote peers
+var connections = make([]*Connection, 0)
+// Array of address-port pairs of connections that the client attempted to form with remote peers
+var attemptedConnections []string
+// Mutex for the array of connections
+var connectionsMu sync.RWMutex
+// Start time of the download
+var startTime time.Time
+// Whether the client is in end game
+var inEndGame = false 
 
 // Stores an unfulfilled request
 type Request struct {
@@ -53,17 +65,6 @@ func contains(requestQueue []*Request, request *Request) bool {
 
 	return false
 }
-
-// Bitfield of the client
-var bitfield []byte
-// Array of connections that the client has with remote peers
-var connections = make([]*Connection, 0)
-// Array of address-port pairs of connections that the client attempted to form with remote peers
-var attemptedConnections []string
-// Mutex for the array of connections
-var connectionsMu sync.RWMutex
-// Start time of the download
-var startTime time.Time
 
 // Stores the state of a connection that the client has with a remote peer
 type Connection struct {
@@ -479,6 +480,37 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 								} else {
 									fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", message.index, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
 								}
+
+								// Check if the client is in end game
+								if inEndGame {
+									connectionsMu.RLock()
+
+									// Iterate across the peer connections
+									for _, connection := range connections {
+
+										// Serialize and send cancel message
+										cancelMessage := newRequestOrCancelMessage(messageIDCancel, message.index, message.begin / uint32(maxBlockSize))
+										sendMessage(connection, cancelMessage.serialize(), "cancel", fmt.Sprintf("[%s] Sent cancel message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), message.index, message.begin / uint32(maxBlockSize), pieces[message.index].blocks[message.begin / uint32(maxBlockSize)].length))
+									}
+
+									connectionsMu.RUnlock()
+								}
+
+								// Check if all of the pieces have been completed
+								if numPiecesCompleted == numPieces {
+
+									// Exit end game
+									inEndGame = false
+
+									if verbose {
+										fmt.Println("[CLIENT] Exited end game")
+									}
+
+									// Write all of the pieces to a file
+									writePiecesToFile()
+
+									fmt.Printf("[CLIENT] Successfully downloaded the file \"%s\" in %v seconds!\n", fileName, time.Since(startTime).Seconds())
+								}
 							} else {
 								// Revert the blocks of the piece
 								for _, block := range pieces[message.index].blocks {
@@ -578,61 +610,126 @@ func handleRequestMessages(connection *Connection) {
 	// Loop until all pieces have been completed
 	for numPiecesCompleted < numPieces {
 
-		// If the client is choked by the peer, continue
-		if connection.peerChoking {
-			continue
-		}
+		// Check if the client is not in end game
+		if !inEndGame {
 
-		// Select a random piece
-		pieceIndex := uint32(rand.Intn(int(numPieces)))
-
-		// If the piece is complete, continue
-		if pieces[pieceIndex].isComplete {
-			continue
-		}
-
-		// Compute the byte index and bit offset of the piece in the peer's bitfield
-		byteIndex := pieceIndex / 8
-		bitOffset := 7 - uint(pieceIndex % 8)
-
-		// If the peer does not have the piece, continue
-		if connection.bitfield[byteIndex] & (1 << bitOffset) == 0 {
-			continue
-		}
-
-		// Iterate across the blocks in the piece
-		for blockIndex, block := range pieces[pieceIndex].blocks {
-
-			// If the block has been received, continue
-			if block.isReceived {
+			// If the client is choked by the peer, continue
+			if connection.peerChoking {
 				continue
 			}
 
-			// Initialize a new request
-			request := newRequest(pieceIndex, uint32(blockIndex) * uint32(maxBlockSize), uint32(block.length))
+			// Select a random piece
+			pieceIndex := uint32(rand.Intn(int(numPieces)))
 
-			// Wait while the request queue is full
-			for len(connection.requestQueue) >= maxRequestQueueSize {}
+			// If the piece is complete, continue
+			if pieces[pieceIndex].isComplete {
+				continue
+			}
 
-			// Check if the request is not already in the queue
-			if !contains(connection.requestQueue, request) {
+			// Compute the byte index and bit offset of the piece in the peer's bitfield
+			byteIndex := pieceIndex / 8
+			bitOffset := 7 - uint(pieceIndex % 8)
 
-				// Add the request to the queue
-				connection.requestQueue = append(connection.requestQueue, request)
+			// If the peer does not have the piece, continue
+			if connection.bitfield[byteIndex] & (1 << bitOffset) == 0 {
+				continue
+			}
+
+			// Iterate across the blocks in the piece
+			for blockIndex, block := range pieces[pieceIndex].blocks {
+
+				// If the block has been received, continue
+				if block.isReceived {
+					continue
+				}
+
+				// Initialize a new request
+				request := newRequest(pieceIndex, uint32(blockIndex) * uint32(maxBlockSize), uint32(block.length))
+
+				// Wait while the request queue is full
+				for len(connection.requestQueue) >= maxRequestQueueSize {}
+
+				// Check if the request is not already in the queue
+				if !contains(connection.requestQueue, request) {
+
+					// Add the request to the queue
+					connection.requestQueue = append(connection.requestQueue, request)
+					
+					// Serialize and send the request message
+					requestMessage := newRequestOrCancelMessage(messageIDRequest, pieceIndex, uint32(blockIndex))
+					sendMessage(connection, requestMessage.serialize(), "request", fmt.Sprintf("[%s] Sent request message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), pieceIndex, int64(blockIndex) * maxBlockSize, block.length))
 				
-				// Serialize and send the request message
-				requestMessage := newRequestOrCancelMessage(messageIDRequest, pieceIndex, uint32(blockIndex))
-				sendMessage(connection, requestMessage.serialize(), "request", fmt.Sprintf("[%s] Sent request message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), pieceIndex, int64(blockIndex) * maxBlockSize, block.length))
+					// The block has been requested
+					pieces[pieceIndex].blocks[blockIndex].isRequested = true
+				}
+			}
+
+			// Iterate across all of pieces
+			for _, piece := range pieces {
+
+				// Iterate across all of the blocks of the current piece
+				for _, block := range piece.blocks {
+
+					// If the current block has not been requested, go to the label
+					if !block.isRequested {
+						goto allBlocksNotRequested
+					}
+				}
+			}
+
+			// Enter end game
+			inEndGame = true
+
+			if verbose {
+				fmt.Println("[CLIENT] Entered end game")
+			}
+		} else {
+
+			// Iterate across all of the pieces
+			for pieceIndex, piece := range pieces {
+
+				// If the piece has been completed, continue
+				if piece.isComplete {
+					continue
+				}
+
+				// Iterate across all of the blocks of the current piece
+				for blockIndex, block := range piece.blocks {
+
+					// If the block has been received, continue
+					if block.isReceived {
+						continue
+					}
+
+					// Initialize a new request
+					request := newRequest(uint32(pieceIndex), uint32(blockIndex) * uint32(maxBlockSize), uint32(block.length))
+				
+					// Wait while the request queue is full
+					for len(connection.requestQueue) >= maxRequestQueueSize {}
+
+					// Check if the request is not already in the queue
+					if !contains(connection.requestQueue, request) {
+
+						// Add the request to the queue
+						connection.requestQueue = append(connection.requestQueue, request)
+						
+						// Serialize and send the request message
+						requestMessage := newRequestOrCancelMessage(messageIDRequest, uint32(pieceIndex), uint32(blockIndex))
+						sendMessage(connection, requestMessage.serialize(), "request", fmt.Sprintf("[%s] Sent request message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), pieceIndex, int64(blockIndex) * maxBlockSize, block.length))
+					}
+				}
 			}
 		}
+
+		allBlocksNotRequested:
 	}
 }
 
 // Removes timed-out requests from each connection's request queue.
 func handleRequestTimeouts() {
 
-	// Loop indefinitely
-	for {
+	// Loop until all pieces have been completed
+	for numPiecesCompleted < numPieces {
 
 		connectionsMu.Lock()
 
@@ -725,35 +822,23 @@ func handleConnectionTimeouts() {
 	}
 }
 
-// Handles downloading the file after all pieces have been completed.
-func handleDownloadingFile() {
+// Writes all of the pieces to a file.
+func writePiecesToFile() {
 
-	// Loop indefinitely
-	for {
+	// Create the file
+	file, err := os.Create(fileName)
+	assert(err == nil, "Error creating file")
+	defer file.Close()
+
+	// Iterate across all of the pieces
+	for _, piece := range pieces {
 		
-		// Check if all pieces have been completed
-		if numPiecesCompleted == numPieces {
+		// Iterate across all of the blocks of the current piece
+		for _, block := range piece.blocks {
 
-			// Create the file
-			file, err := os.Create(fileName)
-			assert(err == nil, "Error creating file")
-			defer file.Close()
-
-			// Iterate across all of the pieces
-			for _, piece := range pieces {
-				
-				// Iterate across all of the blocks of the current piece
-				for _, block := range piece.blocks {
-
-					// Write the current block to the file
-					_, err := file.Write(block.data)
-					assert(err == nil, "Error writing piece to file")
-				}
-			}
-
-			break
+			// Write the current block to the file
+			_, err := file.Write(block.data)
+			assert(err == nil, "Error writing piece to file")
 		}
 	}
-
-	fmt.Printf("[CLIENT] Successfully downloaded the file \"%s\" in %v seconds!\n", fileName, time.Since(startTime).Seconds())
 }

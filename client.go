@@ -1,6 +1,9 @@
 /*
  * BitTorrent client, implemented according to the v1.0 protocol specification:
  * https://wiki.theory.org/BitTorrentSpecification.
+ *
+ * SHA1 Hash:
+ * dc735158ca683697c9fdeb2b3b560230ce027bf3  debian-12.4.0-amd64-netinst.iso
  */
 
 package main
@@ -39,15 +42,12 @@ func main() {
 	go handleFormingConnections()
 	go handleIncomingConnections()
 
-	// Start a goroutine to remove timed-out requests from each connection's request queue
-	go handleRequestTimeouts()
-
 	// Start goroutine to periodically send keep-alive messages and close timed-out connections, respectively
 	go handleKeepAliveMessages()
 	go handleConnectionTimeouts()
 
-	// Start a goroutine to download the file after all pieces have been completed
-	go handleDownloadingFile()
+	// Start a goroutine to remove timed-out requests from each connection's request queue
+	go handleRequestTimeouts()
 
 	// Handle shutting down gracefully
 	handleShuttingDown()
