@@ -168,10 +168,8 @@ func receiveTrackerResponse(conn net.Conn) error {
 		return err
 	}
 
-	if trackerResponse == nil {
-		// Initialize the start time of the download
-		startTime = time.Now()
-	}
+	// Initialize the last tracker response
+	lastTrackerResponse := trackerResponse
 
 	// Update the last tracker response received
 	trackerResponse = response
@@ -179,6 +177,11 @@ func receiveTrackerResponse(conn net.Conn) error {
 	if verbose {
 		// Print the tracker response
 		printTrackerResponse()
+	}
+
+	// Check if the client has already downloaded the file
+	if lastTrackerResponse == nil && downloadedFile {
+		fmt.Printf("[CLIENT] The file \"%s\" has already been downloaded!\n", fileName)
 	}
 
 	return err
@@ -287,9 +290,6 @@ func handleTrackerRequests() {
 		scrapeTracker()
 	}
 
-	// Initialize the number of bytes that the client has to download
-	left = fileLength
-
 	// Loop until the client receives a tracker response
 	for {
 
@@ -317,7 +317,7 @@ func handleTrackerRequests() {
 	}
 }
 
-// Recieves tracker requests indefinitely.
+// Receives tracker requests indefinitely.
 func handleTrackerResponses() {
 
 	// Loop indefinitely

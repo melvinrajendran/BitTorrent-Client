@@ -14,12 +14,18 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 // Peer ID of the client
 var peerID string
+// Start time of the download
+var startTime time.Time
 
 func main() {
+
+	// Initialize the start time of the download
+	startTime = time.Now()
 
 	// Parse and validate the command-line flags
 	parseFlags()
@@ -46,8 +52,15 @@ func main() {
 	go handleKeepAliveMessages()
 	go handleConnectionTimeouts()
 
-	// Start a goroutine to remove timed-out requests from each connection's request queue
+	// Start a goroutine to remove timed-out requests from each connection's sent request queue
 	go handleRequestTimeouts()
+
+	// Start a goroutine to download the file after all of the pieces have been completed
+	go handleDownloadingFile()
+
+	// Start goroutines to periodically unchoke the top-four downloaders and a random peer, respectively
+	go handleChoking()
+	go handleOptimisticUnchoking()
 
 	// Handle shutting down gracefully
 	handleShuttingDown()

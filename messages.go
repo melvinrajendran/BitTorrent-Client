@@ -20,7 +20,6 @@ const (
 	pStrLen byte   = 19
 	pStr    string = "BitTorrent protocol"
 )
-
 // Message IDs
 const (
 	messageIDChoke         byte = 0
@@ -406,7 +405,7 @@ func deserializeMessage(len uint32, buffer []byte) (interface{}, error) {
 	switch id {
 		case messageIDChoke, messageIDUnchoke, messageIDInterested, messageIDNotInterested:
 			if len != 1 {
-				return nil, errors.New("Received invalid connection state message length")
+				return nil, errors.New("Received invalid connection message length")
 			}
 			return ConnectionMessage {len: len, id: id}, nil
 
