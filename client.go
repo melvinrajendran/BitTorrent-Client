@@ -2,7 +2,8 @@
  * BitTorrent client, implemented according to the v1.0 protocol specification:
  * https://wiki.theory.org/BitTorrentSpecification.
  *
- * SHA1 Hash:
+ * SHA1 Hashes:
+ * 888987a1d69639deeb67fe976cb291aa2121486f  artofwar.txt
  * dc735158ca683697c9fdeb2b3b560230ce027bf3  debian-12.4.0-amd64-netinst.iso
  */
 

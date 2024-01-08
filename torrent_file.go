@@ -205,6 +205,21 @@ func parseTorrentFile(torrentFile *os.File) error {
 			if !bytes.Equal(getSHA1Hash(buffer), pieces[i].hash) {
 				goto clientDoesNotHaveFile
 			}
+		}
+
+		// Seek to the beginning of the file
+		_, err = file.Seek(0, io.SeekStart)
+		assert(err == nil, "Error seeking to the beginning of the file")
+
+		// Iterate as many times as the number of pieces
+		for i := int64(0); i < numPieces; i++ {
+
+			// Initialize a buffer to store the current piece
+			buffer := make([]byte, pieces[i].length)
+
+			// Read the current piece into the buffer
+			io.ReadFull(file, buffer)
+			assert(err == nil, "Error reading a piece of the file")
 
 			// Update the piece
 			for _, block := range pieces[i].blocks {

@@ -549,7 +549,7 @@ func handleRequestMessages(connection *Connection) {
 			if pieces[pieceIndex].isComplete {
 				continue
 			}
-
+			
 			// Compute the byte index and bit offset of the piece in the peer's bitfield
 			byteIndex := pieceIndex / 8
 			bitOffset := 7 - uint(pieceIndex % 8)
@@ -699,9 +699,9 @@ func handleDownloadingFile() {
 		// Loop until the file has been downloaded
 		for !downloadedFile {
 
-			// Receive the index of a completed piece from the channel
+			// Receive the index of a complete piece from the channel
 			pieceIndex, ok := <- completePieceChannel
-			assert(ok, "Error reading from the piece channel")
+			assert(ok, "Error reading from the complete piece channel")
 
 			// Seek to the position of the piece
 			_, err = file.Seek(int64(pieceIndex) * maxPieceLength, 0)
@@ -730,7 +730,7 @@ func handleDownloadingFile() {
 				// Download the file
 				downloadedFile = true
 
-				fmt.Printf("[CLIENT] Successfully downloaded the file \"%s\" in %v seconds!\n", fileName, time.Since(startTime).Seconds())
+				fmt.Printf("[CLIENT] Successfully downloaded the file \"%s\" in %v!\n", fileName, formatSeconds(time.Since(startTime).Seconds()))
 
 				// Send a tracker request containing the event 'completed'
 				sendTrackerRequest("completed")

@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"flag"
 	"fmt"
+	"math"
 	"net"
 	"os"
 )
@@ -47,6 +48,22 @@ func formatBytes(bytes int64) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+// Formats the parameter number of seconds as a string.
+func formatSeconds(seconds float64) string {
+
+	// If the number of seconds is less than 60, return only seconds
+	if seconds < 60 {
+		return fmt.Sprintf("%.2f seconds", seconds)
+	}
+
+	// Calculate the number of minutes and remaining seconds
+	minutes := int(seconds) / 60
+	remainingSeconds := int(math.Round(seconds - float64(minutes) * 60))
+
+	// Return the time in minutes and seconds
+	return fmt.Sprintf("%d minutes and %d seconds", minutes, remainingSeconds)
 }
 
 // Returns the SHA1 hash of the parameter byte array.
