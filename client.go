@@ -25,9 +25,6 @@ var startTime time.Time
 
 func main() {
 
-	// Initialize the start time of the download
-	startTime = time.Now()
-
 	// Parse and validate the command-line flags
 	parseFlags()
 	defer torrentFile.Close()
@@ -40,6 +37,11 @@ func main() {
 
 	// Parse the torrent file
 	parseTorrentFile(torrentFile)
+
+	// If the file has not been downloaded, initialize the start time of the download
+	if !downloadedFile {
+		startTime = time.Now()
+	}
 
 	// Start goroutines to send tracker requests and receive tracker responses, respectively
 	go handleTrackerRequests()

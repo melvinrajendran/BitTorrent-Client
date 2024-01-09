@@ -22,6 +22,38 @@ var connections = make([]*Connection, 0)
 // Mutex for the array of connections
 var connectionsMu sync.RWMutex
 
+// Stores an unfulfilled request
+type Request struct {
+	index    uint32
+	begin    uint32
+	length   uint32
+	time time.Time
+}
+
+func newRequest(index uint32, begin uint32, length uint32) *Request {
+	return &Request {
+		index:    index,
+		begin:    begin,
+		length:   length,
+		time: time.Now(),
+	}
+}
+
+// Returns true if the parameter request queue contains the parameter request, or false otherwise.
+func contains(requestQueue []*Request, request *Request) bool {
+
+	// Iterate across the request queue
+	for _, r := range requestQueue {
+
+		// Check if the request is in the queue
+		if r.index == request.index && r.begin == request.begin && r.length == request.length {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Stores the state of a connection that the client has with a remote peer
 type Connection struct {
 	conn 			           net.Conn
@@ -101,6 +133,8 @@ func handleFormingConnections() {
 				}
 			}
 
+			connectionsMu.RLock()
+
 			// Determine if there is already a connection to the peer
 			for _, connection := range connections {
 				if connection.conn.RemoteAddr().String() == peerAddrPort {
@@ -109,8 +143,13 @@ func handleFormingConnections() {
 				}
 			}
 
+			// Get the number of peer connections
+			numConnections := len(connections)
+			
+			connectionsMu.RUnlock()
+
 			// Check if forming a connection to the peer should be attempted, and there are less than 30 peer connections
-			if shouldAttempt && len(connections) < 30 {
+			if shouldAttempt && numConnections < 30 {
 
 				// Add the peer's address-port pair to the array of attempted connections
 				attemptedConnections = append(attemptedConnections, peerAddrPort)
@@ -184,9 +223,14 @@ func handleIncomingConnections() {
 
 	// Loop indefinitely
 	for {
+		// Get the number of peer connections
+		connectionsMu.RLock()
+		numConnections := len(connections)
+		connectionsMu.RUnlock()
+
 
 		// Check if there are less than 55 peer connections
-		if len(connections) < 55 {
+		if numConnections < 55 {
 
 			// Accept an incoming connection
 			conn, err := listener.Accept()

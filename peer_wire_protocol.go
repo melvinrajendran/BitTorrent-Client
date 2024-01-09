@@ -31,38 +31,6 @@ var downloaders = make([]*Connection, 0)
 // Optimistic unchoke
 var optimisticUnchoke *Connection
 
-// Stores an unfulfilled request
-type Request struct {
-	index    uint32
-	begin    uint32
-	length   uint32
-	time time.Time
-}
-
-func newRequest(index uint32, begin uint32, length uint32) *Request {
-	return &Request {
-		index:    index,
-		begin:    begin,
-		length:   length,
-		time: time.Now(),
-	}
-}
-
-// Returns true if the parameter request queue contains the parameter request, or false otherwise.
-func contains(requestQueue []*Request, request *Request) bool {
-
-	// Iterate across the request queue
-	for _, r := range requestQueue {
-
-		// Check if the request is in the queue
-		if r.index == request.index && r.begin == request.begin && r.length == request.length {
-			return true
-		}
-	}
-
-	return false
-}
-
 // Handles a successful connection with a peer.
 func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
@@ -189,6 +157,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 									
 									// Check if there are less than 4 downloaders
 									if len(downloaders) < 4 {
+
+										connectionsMu.RLock()
 										
 										// Update the array of downloaders
 										for _, conn := range connections {
@@ -200,6 +170,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 												break
 											}
 										}
+
+										connectionsMu.RUnlock()
 									} else {
 
 										// Check if the slowest downloader is not the optimistic unchoke
@@ -212,6 +184,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 											// The client choked the peer
 											downloaders[3].amChoking = true
 
+											connectionsMu.RLock()
+
 											// Update the array of downloaders
 											for _, conn := range connections {
 												if conn == connection {
@@ -222,6 +196,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 													break
 												}
 											}
+
+											connectionsMu.RUnlock()
 										} else {
 
 											// Serialize and send a choke message
@@ -230,6 +206,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 
 											// The client choked the peer
 											downloaders[2].amChoking = true
+
+											connectionsMu.RLock()
 
 											// Update the array of downloaders
 											for _, conn := range connections {
@@ -242,6 +220,8 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 													break
 												}
 											}
+
+											connectionsMu.RUnlock()
 										}
 									}
 									
@@ -405,29 +385,25 @@ func handleSuccessfulConnection(conn net.Conn, peerID string) {
 									// Send the index of the complete piece into the channel
 									completePieceChannel <- message.index
 
-									if !verbose {
-										fmt.Printf("\r[CLIENT] Downloading from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)", len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
-										if numPiecesCompleted == numPieces {
-											fmt.Println()
-										}
-									} else {
-										fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", message.index, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
-									}
+									connectionsMu.RLock()
 
-									// Check if the client is in end game
-									if inEndGame {
-										connectionsMu.RLock()
+									// Iterate across the peer connections
+									for _, connection := range connections {
 
-										// Iterate across the peer connections
-										for _, connection := range connections {
+										// Serialize and send have message
+										haveMessage := newHaveMessage(message.index)
+										sendMessage(connection, haveMessage.serialize(), "have", fmt.Sprintf("[%s] Sent have message with piece index %d", connection.conn.RemoteAddr(), message.index))
+									
+										// Check if the client is in end game
+										if inEndGame {
 
 											// Serialize and send cancel message
 											cancelMessage := newRequestOrCancelMessage(messageIDCancel, message.index, message.begin / uint32(maxBlockSize))
 											sendMessage(connection, cancelMessage.serialize(), "cancel", fmt.Sprintf("[%s] Sent cancel message with index %d, begin %d, and length %d", connection.conn.RemoteAddr(), message.index, message.begin / uint32(maxBlockSize), pieces[message.index].blocks[message.begin / uint32(maxBlockSize)].length))
 										}
-
-										connectionsMu.RUnlock()
 									}
+
+									connectionsMu.RUnlock()
 								} else {
 									// Revert the blocks of the piece
 									for _, block := range pieces[message.index].blocks {
@@ -658,7 +634,7 @@ func handleRequestTimeouts() {
 	// Loop until the client has downloaded the file
 	for !downloadedFile {
 
-		connectionsMu.Lock()
+		connectionsMu.RLock()
 
 		// Iterate across the connections
 		for _, connection := range connections {
@@ -677,7 +653,7 @@ func handleRequestTimeouts() {
 			}
 		}
 
-		connectionsMu.Unlock()
+		connectionsMu.RUnlock()
 	}
 }
 
@@ -703,6 +679,15 @@ func handleDownloadingFile() {
 			pieceIndex, ok := <- completePieceChannel
 			assert(ok, "Error reading from the complete piece channel")
 
+			if !verbose {
+				fmt.Printf("\r[CLIENT] Downloading from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)", len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
+				if numPiecesCompleted == numPieces {
+					fmt.Println()
+				}
+			} else {
+				fmt.Printf("[CLIENT] Downloaded piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d from %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers (%.2f%%)\n", pieceIndex, len(connections), len(trackerResponse["peers"].([]interface{})), float64(numPiecesCompleted)/float64(numPieces) * 100)
+			}
+
 			// Seek to the position of the piece
 			_, err = file.Seek(int64(pieceIndex) * maxPieceLength, 0)
 			assert(err == nil, "Error seeking file")
@@ -723,9 +708,6 @@ func handleDownloadingFile() {
 
 				// Remove the .part extension from the file
 				os.Rename(fileName + ".part", fileName)
-
-				// Close the channel
-				close(completePieceChannel)
 
 				// Download the file
 				downloadedFile = true
@@ -757,6 +739,8 @@ func handleChoking() {
 		// Initialize a temporary array of downloaders
 		tempDownloaders := make([]*Connection, 0)
 
+		connectionsMu.RLock()
+
 		// Iterate across the connections
 		for _, connection := range connections {
 
@@ -784,6 +768,8 @@ func handleChoking() {
 			}
 		}
 
+		connectionsMu.RUnlock()
+
 		// Check if the optimistic unchoke is interested in the client
 		if optimisticUnchoke != nil && optimisticUnchoke.peerInterested {
 
@@ -804,6 +790,8 @@ func handleChoking() {
 
 		// Update the global array of downloaders
 		downloaders = tempDownloaders
+
+		connectionsMu.RLock()
 
 		// Iterate across the connections
 		for _, connection := range connections {
@@ -855,6 +843,8 @@ func handleChoking() {
 			}
 		}
 
+		connectionsMu.RUnlock()
+
 		// Sleep for 10 seconds
 		time.Sleep(10 * time.Second)
 	}
@@ -866,8 +856,13 @@ func handleOptimisticUnchoking() {
 	// Loop indefinitely
 	for {
 
+		// Get the number of peer connections
+		connectionsMu.RLock()
+		numConnections := len(connections)
+		connectionsMu.RUnlock()
+
 		// Check if there is at least 1 peer connection
-		if len(connections) >= 1 {
+		if numConnections >= 1 {
 
 			// Initialize an array to store the weights of the choked peer connections
 			var connectionWeights []*Connection
