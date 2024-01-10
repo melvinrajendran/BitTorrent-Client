@@ -634,7 +634,7 @@ func handleRequestTimeouts() {
 	// Loop until the client has downloaded the file
 	for !downloadedFile {
 
-		connectionsMu.RLock()
+		connectionsMu.Lock()
 
 		// Iterate across the connections
 		for _, connection := range connections {
@@ -653,7 +653,7 @@ func handleRequestTimeouts() {
 			}
 		}
 
-		connectionsMu.RUnlock()
+		connectionsMu.Unlock()
 	}
 }
 
@@ -739,7 +739,7 @@ func handleChoking() {
 		// Initialize a temporary array of downloaders
 		tempDownloaders := make([]*Connection, 0)
 
-		connectionsMu.RLock()
+		connectionsMu.Lock()
 
 		// Iterate across the connections
 		for _, connection := range connections {
@@ -768,7 +768,7 @@ func handleChoking() {
 			}
 		}
 
-		connectionsMu.RUnlock()
+		connectionsMu.Unlock()
 
 		// Check if the optimistic unchoke is interested in the client
 		if optimisticUnchoke != nil && optimisticUnchoke.peerInterested {
@@ -791,7 +791,7 @@ func handleChoking() {
 		// Update the global array of downloaders
 		downloaders = tempDownloaders
 
-		connectionsMu.RLock()
+		connectionsMu.Lock()
 
 		// Iterate across the connections
 		for _, connection := range connections {
@@ -843,7 +843,7 @@ func handleChoking() {
 			}
 		}
 
-		connectionsMu.RUnlock()
+		connectionsMu.Unlock()
 
 		// Sleep for 10 seconds
 		time.Sleep(10 * time.Second)
