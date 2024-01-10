@@ -13,7 +13,7 @@ import (
 )
 
 // Maximum number of unfulfilled requests to queue
-const maxRequestQueueSize = 10
+const maxRequestQueueSize = 25
 
 // Array of address-port pairs of connections that the client attempted to form with remote peers
 var attemptedConnections []string
