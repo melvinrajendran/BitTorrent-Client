@@ -965,5 +965,11 @@ func handlePieceMessages(connection *Connection) {
 	
 		// Update the number of bytes uploaded to the peer
 		connection.bytesUploaded += int64(request.length)
+
+		if !verbose {
+			fmt.Printf("\r[CLIENT] Uploading to %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers", len(connections), len(trackerResponse["peers"].([]interface{})))
+		} else {
+			fmt.Printf("[CLIENT] Uploaded a block of piece %-" + fmt.Sprint(len(strconv.Itoa(int(numPieces)))) + "d to %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d of %-" + fmt.Sprint(len(strconv.Itoa(len(trackerResponse["peers"].([]interface{}))))) + "d peers\n", request.index, len(connections), len(trackerResponse["peers"].([]interface{})))
+		}
 	}
 }
