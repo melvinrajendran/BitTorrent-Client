@@ -6,7 +6,9 @@ This repository contains the source code for a full-featured BitTorrent v1.0 cli
 
 ## Protocol Specification
 
-BitTorrent is a protocol designed to facilitate file transfers among multiple peers across unreliable networks. The core idea is that by distributing the upload load among a set of peers, a client can better utilize its download capacity. This results in quicker downloads compared to a traditional client-server relationship. To learn more about the protocol, read the [official specification](https://wiki.theory.org/BitTorrentSpecification).
+BitTorrent is a protocol designed to facilitate file transfers among multiple peers across unreliable networks. The core idea is that by distributing the upload load among a set of peers, a client can better utilize its download capacity. This results in quicker downloads compared to a traditional client-server relationship.
+
+To learn more about the protocol, read the [official specification](https://wiki.theory.org/BitTorrentSpecification).
 
 ## Design Considerations
 
