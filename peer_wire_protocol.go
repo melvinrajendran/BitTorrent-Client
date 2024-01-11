@@ -564,25 +564,25 @@ func handleRequestMessages(connection *Connection) {
 				}
 			}
 
-			// // Iterate across all of pieces
-			// for _, piece := range pieces {
+			// Iterate across all of pieces
+			for _, piece := range pieces {
 
-			// 	// Iterate across all of the blocks of the current piece
-			// 	for _, block := range piece.blocks {
+				// Iterate across all of the blocks of the current piece
+				for _, block := range piece.blocks {
 
-			// 		// If the current block has not been requested, go to the label
-			// 		if !block.isRequested {
-			// 			goto allBlocksNotRequested
-			// 		}
-			// 	}
-			// }
+					// If the current block has not been requested, go to the label
+					if !block.isRequested {
+						goto allBlocksNotRequested
+					}
+				}
+			}
 
-			// // Enter end game
-			// inEndGame = true
+			// Enter end game
+			inEndGame = true
 
-			// if verbose {
-			// 	fmt.Println("[CLIENT] Entered end game")
-			// }
+			if verbose {
+				fmt.Println("[CLIENT] Entered end game")
+			}
 		} else {
 
 			// Iterate across all of the pieces
@@ -621,7 +621,7 @@ func handleRequestMessages(connection *Connection) {
 			}
 		}
 
-		// allBlocksNotRequested:
+		allBlocksNotRequested:
 	}
 }
 
