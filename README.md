@@ -1,6 +1,6 @@
 # BitTorrent Client
 
-<img width="1440" alt="Screenshot 2024-01-11 at 5 02 02 PM" src="https://github.com/melvinrajendran/BitTorrent-Client/assets/44681827/4c52957c-3b59-42b3-85de-1189fc9b834c"><br/>
+<img width="1440" alt="Screenshot 2024-01-11 at 5 06 08 PM" src="https://github.com/melvinrajendran/BitTorrent-Client/assets/44681827/f52b5cbe-5ec3-4673-bee6-8e8f0e917d25"><br/>
 
 This repository contains the source code for a full-featured BitTorrent v1.0 client, built using Go. This client takes advantage of Go's concurrency features, which include goroutines and channels, to both download and upload files.
 
